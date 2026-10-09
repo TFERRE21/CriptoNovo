@@ -45,17 +45,26 @@ function evaluatePair(pair, now = Date.now()) {
   const liquidity = Number(pair?.liquidity?.usd || 0);
   const createdAt = Number(pair?.pairCreatedAt || 0);
   const ageHours = createdAt > 0 ? (now - createdAt) / 3600000 : Infinity;
-  const minLiquidity = numEnv("MIN_LIQUIDITY_USD", 5000);
+  const minLiquidity = numEnv("MIN_LIQUIDITY_USD", 10000);
+  const minVolume24h = numEnv("MIN_VOLUME_24H_USD", 25000);
+  const minTxns1h = numEnv("MIN_TXNS_1H", 10);
+  const volume24h = Number(pair?.volume?.h24 || 0);
+  const txns1h = Number(pair?.txns?.h1?.buys || 0) + Number(pair?.txns?.h1?.sells || 0);
+  const buys1h = Number(pair?.txns?.h1?.buys || 0);
+  const sells1h = Number(pair?.txns?.h1?.sells || 0);
   const maxAge = numEnv("MAX_PAIR_AGE_HOURS", 24);
   const reasons = [];
   if (!pair?.pairAddress || !pair?.baseToken?.address || !pair?.quoteToken?.address) reasons.push("Dados incompletos");
   if (String(pair?.chainId || "").toLowerCase() !== "bsc") reasons.push("Rede diferente de BNB Chain");
-  if (liquidity < minLiquidity) reasons.push(`Liquidez abaixo do mínimo (US$${minLiquidity})`);
+  if (liquidity < minLiquidity) reasons.push(`Liquidez abaixo do mínimo (US${minLiquidity})`);
+  if (volume24h < minVolume24h) reasons.push(`Volume 24h abaixo de US${minVolume24h}`);
+  if (txns1h < minTxns1h) reasons.push(`Poucas transações na última hora (${txns1h}/${minTxns1h})`);
+  if (txns1h >= minTxns1h && buys1h < sells1h) reasons.push("Pressão vendedora na última hora");
   if (!Number.isFinite(ageHours) || ageHours < 0 || ageHours > maxAge) reasons.push("Idade do par ausente ou fora do limite");
   const selected = tokenSide(pair);
   if (!selected.token?.address || !(selected.priceUsd > 0)) reasons.push("Preço ou token negociável indisponível");
   if (String(pair?.dexId || "").length === 0) reasons.push("DEX não identificada");
-  return { approved: reasons.length === 0, reasons, liquidityUsd: liquidity,
+  return { approved: reasons.length === 0, reasons, liquidityUsd: liquidity, volume24hUsd: volume24h, txns1h, buys1h, sells1h,
     ageMinutes: Number.isFinite(ageHours) ? Math.round(ageHours * 60) : null,
     token: selected.token, priceUsd: selected.priceUsd };
 }
@@ -121,8 +130,8 @@ class PaperEngine {
           tokenName: result.token?.name || "Desconhecido",
           tokenSymbol: result.token?.symbol || "?",
           url: pair.url || "", priceUsd: result.priceUsd,
-          liquidityUsd: result.liquidityUsd, ageMinutes: result.ageMinutes,
-          volume24hUsd: Number(pair.volume?.h24 || 0), approved: result.approved,
+          liquidityUsd: result.liquidityUsd, ageMinutes: result.ageMinutes, dexId: pair.dexId || "",
+          volume24hUsd: Number(pair.volume?.h24 || 0), txns1h: result.txns1h, buys1h: result.buys1h, sells1h: result.sells1h, approved: result.approved,
           reasons: result.reasons, status: result.approved ? "APROVADO PARA SIMULAÇÃO" : "BLOQUEADO",
           detectedAt: candidatesById.get(address)?.detectedAt || new Date(now).toISOString(),
           lastSeenAt: new Date(now).toISOString()
@@ -255,8 +264,11 @@ class PaperEngine {
   async reset() {
     await this.stop();
     const initial = Number(process.env.PAPER_BALANCE_USD || 100);
-    this.state = { ...defaultState(), paperBalanceUsd: initial, initialBalanceUsd: initial };
+    this.state = { ...defaultState(), paperBalanceUsd: initial, initialBalanceUsd: initial, running: true, startedAt: new Date().toISOString() };
+    this.addLog("NOVO EXPERIMENTO: estado anterior zerado; saldo virtual US$100; objetivo de 10 entradas de US$10; filtros de qualidade reforçados.", "experiment");
     await saveState(this.state);
+    this.timer = setInterval(() => this.poll(), Math.max(15000, numEnv("POLL_INTERVAL_MS", 30000)));
+    this.poll().catch(error => { this.state.lastError = error.message || "Falha na consulta inicial"; saveState(this.state).catch(() => {}); });
   }
   snapshot() {
     const positions = this.state.positions.filter(p => p.status === "OPEN");
