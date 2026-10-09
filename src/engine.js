@@ -102,7 +102,7 @@ class PaperEngine {
     this.polling = true;
     try {
       // Search endpoint is approximate. Query several terms each cycle instead of repeatedly seeing only the same WBNB results.
-      const queries = ["WBNB", "BNB", "PancakeSwap", "BSC", "WETH", "ETH", "Uniswap", "Ethereum", "SOL", "Raydium", "Solana", "Base", "Aerodrome", "Arbitrum", "Optimism", "Polygon", "Avalanche"];
+      const queries = ["WBNB", "BNB", "PancakeSwap", "BSC", "WETH", "ETH", "ETH USDC", "WETH USDC", "Uniswap", "Ethereum", "SOL", "SOL USDC", "Raydium", "Solana", "Base", "Aerodrome", "Arbitrum", "Optimism", "Polygon", "Avalanche", "AVAX", "MATIC"];
       const results = await Promise.all(queries.map(async q => {
         const response = await fetch(`https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(q)}`, {
           headers: { accept: "application/json" }, signal: AbortSignal.timeout(12000)
@@ -114,15 +114,15 @@ class PaperEngine {
       const byAddress = new Map();
       for (const pair of results.flat()) {
         if (!SUPPORTED_CHAINS.has(String(pair.chainId || "").toLowerCase()) || !pair.pairAddress) continue;
-        byAddress.set(String(pair.pairAddress).toLowerCase(), pair);
+        byAddress.set(`${String(pair.chainId).toLowerCase()}:${String(pair.pairAddress).toLowerCase()}`, pair);
       }
       const pairs = [...byAddress.values()]
         .sort((a, b) => Number(b.pairCreatedAt || 0) - Number(a.pairCreatedAt || 0))
-        .slice(0, 300);
+        .filter(pair => SUPPORTED_CHAINS.has(String(pair.chainId || "").toLowerCase()));
       const seen = new Set(this.state.seenPairAddresses);
       const now = Date.now();
       this.state.pairsAnalyzed = Number(this.state.pairsAnalyzed || 0) + pairs.length;
-      this.addLog(`Consulta concluída: ${pairs.length} pares BNB Chain analisados; ${byAddress.size} pares únicos nesta rodada.`, 'scan');
+      const chainCounts = pairs.reduce((acc, pair) => { const chain = String(pair.chainId || "unknown").toLowerCase(); acc[chain] = (acc[chain] || 0) + 1; return acc; }, {});\n      this.addLog(`Consulta multirrede: ${pairs.length} pares únicos — ${Object.entries(chainCounts).map(([chain, count]) => `${chain}: ${count}`).join(", ") || "nenhum par retornado"}.`, "scan");
       const candidatesById = new Map(this.state.candidates.map(item => [String(item.id).toLowerCase(), item]));
       for (const pair of pairs) {
         const address = String(pair.pairAddress || "").toLowerCase();
@@ -139,7 +139,7 @@ class PaperEngine {
           liquidityUsd: result.liquidityUsd, ageMinutes: result.ageMinutes, dexId: pair.dexId || "",
           volume24hUsd: Number(pair.volume?.h24 || 0), txns1h: result.txns1h, buys1h: result.buys1h, sells1h: result.sells1h, approved: result.approved,
           reasons: result.reasons, status: result.approved ? "APROVADO PARA SIMULAÇÃO" : "BLOQUEADO",
-          detectedAt: candidatesById.get(address)?.detectedAt || new Date(now).toISOString(),
+          detectedAt: candidatesById.get(pairKey)?.detectedAt || new Date(now).toISOString(),
           lastSeenAt: new Date(now).toISOString()
         };
         const isNew = !seen.has(pairKey);
