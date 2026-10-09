@@ -9,7 +9,7 @@ const SUPPORTED_CHAINS = new Set(CHAIN_IDS);
 const chainBalances = amount => Object.fromEntries(CHAIN_IDS.map(chain => [chain, Number(amount)]));
 
 const defaultState = () => ({
-  running: false, startedAt: null, lastPollAt: null, lastError: null, pairsAnalyzed: 0, activityLogs: [], experiment: { targetEntries: 10, entriesOpened: 0, completed: false, startedAt: null },
+  running: false, startedAt: null, lastPollAt: null, lastError: null, pairsAnalyzed: 0, activityLogs: [], experiment: { targetEntries: 80, entriesOpened: 0, completed: false, startedAt: null },
   paperBalanceUsd: Number(process.env.PAPER_BALANCE_USD || 100) * CHAIN_IDS.length,
   initialBalanceUsd: Number(process.env.PAPER_BALANCE_USD || 100) * CHAIN_IDS.length,
   networkBalances: chainBalances(Number(process.env.PAPER_BALANCE_USD || 100)),
@@ -161,7 +161,7 @@ class PaperEngine {
           ...this.state.trades.map(t => String(t.pairAddress || "").toLowerCase())
         ]);
         for (const candidate of this.state.candidates) {
-          if (Number(this.state.experiment?.entriesOpened || 0) >= 10) break;
+          if (Number(this.state.experiment?.entriesOpened || 0) >= 80) break;
           const id = String(candidate.pairAddress || "").toLowerCase();
           if (!candidate.approved || !id || alreadyUsed.has(id) || !(Number(candidate.priceUsd) > 0)) continue;
           this.openPaperPosition(candidate);
@@ -183,10 +183,11 @@ class PaperEngine {
     this.state.experiment = { targetEntries: 10, entriesOpened: 0, completed: false, startedAt: null, ...(this.state.experiment || {}) };
     const maxOpen = 10;
     const totalEntries = Number(this.state.experiment.entriesOpened || 0);
-    if (totalEntries >= 10 || this.state.experiment.completed) return;
+    const chainId = String(candidate.chainId || "bsc").toLowerCase();
+    const chainEntries = [...this.state.positions, ...this.state.trades].filter(p => String(p.chainId || "bsc").toLowerCase() === chainId && Number(p.experimentEntryNumber) > 0).length;
+    if (chainEntries >= 10 || totalEntries >= 80 || this.state.experiment.completed) return;
     const notional = numEnv("PAPER_ORDER_USD", 10);
     const open = this.state.positions.filter(p => p.status === "OPEN");
-    const chainId = String(candidate.chainId || "bsc").toLowerCase();
     this.state.networkBalances = this.state.networkBalances || chainBalances(Number(process.env.PAPER_BALANCE_USD || 100));
     if (open.length >= maxOpen || Number(this.state.networkBalances[chainId] ?? 100) < notional) return;
     if (open.some(p => p.pairAddress.toLowerCase() === candidate.pairAddress.toLowerCase())) return;
@@ -199,7 +200,7 @@ class PaperEngine {
       estimatedNetPct: -numEnv("ESTIMATED_ROUNDTRIP_COST_PCT", 1.5),
       status: "OPEN", openedAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
       takeProfitPriceUsd: candidate.priceUsd * (1 + (numEnv("TAKE_PROFIT_NET_PCT", 5) + numEnv("ESTIMATED_ROUNDTRIP_COST_PCT", 1.5)) / 100),
-      experimentEntryNumber: totalEntries + 1,
+      experimentEntryNumber: chainEntries + 1,
       entryFeatures: { liquidityUsd: Number(candidate.liquidityUsd || 0), ageMinutes: candidate.ageMinutes, volume24hUsd: Number(candidate.volume24hUsd || 0), tokenSymbol: candidate.tokenSymbol, pairAddress: candidate.pairAddress, dexId: candidate.dexId || null, priceUsd: Number(candidate.priceUsd || 0) }
     };
     this.state.networkBalances[chainId] = Number(this.state.networkBalances[chainId] ?? 100) - notional;
@@ -247,7 +248,7 @@ class PaperEngine {
     this.state.paperBalanceUsd = Object.values(this.state.networkBalances).reduce((sum, value) => sum + Number(value || 0), 0);
     this.state.trades.unshift({ ...position });
     const experimentTrades = this.state.trades.filter(t => Number(t.experimentEntryNumber) > 0);
-    if (experimentTrades.length >= 10 && this.state.experiment.entriesOpened >= 10) {
+    if (experimentTrades.length >= 80 && this.state.experiment.entriesOpened >= 80) {
       this.state.experiment.completed = true;
       const winners = experimentTrades.filter(t => Number(t.pnlUsd) > 0);
       const losers = experimentTrades.filter(t => Number(t.pnlUsd) <= 0);
@@ -276,7 +277,7 @@ class PaperEngine {
     await this.stop();
     const initial = Number(process.env.PAPER_BALANCE_USD || 100);
     this.state = { ...defaultState(), paperBalanceUsd: initial * CHAIN_IDS.length, initialBalanceUsd: initial * CHAIN_IDS.length, networkBalances: chainBalances(initial), running: true, startedAt: new Date().toISOString() };
-    this.addLog("NOVO EXPERIMENTO: estado anterior zerado; saldo virtual US$100 por rede; objetivo de 10 entradas de US$10 por rede; filtros de qualidade reforçados.", "experiment");
+    this.addLog("NOVO EXPERIMENTO: estado anterior zerado; saldo virtual US$100 por rede; objetivo de 10 entradas de US$10 por rede (80 no total); filtros de qualidade reforçados.", "experiment");
     await saveState(this.state);
     this.timer = setInterval(() => this.poll(), Math.max(15000, numEnv("POLL_INTERVAL_MS", 30000)));
     this.poll().catch(error => { this.state.lastError = error.message || "Falha na consulta inicial"; saveState(this.state).catch(() => {}); });
@@ -285,7 +286,7 @@ class PaperEngine {
     const positions = this.state.positions.filter(p => p.status === "OPEN");
     const realizedPnlUsd = this.state.trades.reduce((sum, t) => sum + Number(t.pnlUsd || 0), 0);
     return { ...this.state, positions, openPositionsCount: positions.length,
-      closedTradesCount: this.state.trades.length, experiment: { targetEntries: 10, entriesOpened: 0, completed: false, ...(this.state.experiment || {}) }, realizedPnlUsd: Number(realizedPnlUsd.toFixed(4)),
+      closedTradesCount: this.state.trades.length, experiment: { targetEntries: 80, entriesOpened: 0, completed: false, ...(this.state.experiment || {}) }, realizedPnlUsd: Number(realizedPnlUsd.toFixed(4)),
       targetNetPct: numEnv("TAKE_PROFIT_NET_PCT", 5), mode: "PAPER" };
   }
 }
