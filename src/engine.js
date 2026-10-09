@@ -141,6 +141,20 @@ class PaperEngine {
       }
       this.state.seenPairAddresses = [...seen].slice(-5000);
       this.state.candidates = this.state.candidates.slice(0, 500);
+      // Fill the ten-entry experiment from already discovered approved pairs too.
+      if (this.state.running) {
+        const alreadyUsed = new Set([
+          ...this.state.positions.map(p => String(p.pairAddress || "").toLowerCase()),
+          ...this.state.trades.map(t => String(t.pairAddress || "").toLowerCase())
+        ]);
+        for (const candidate of this.state.candidates) {
+          if (Number(this.state.experiment?.entriesOpened || 0) >= 10) break;
+          const id = String(candidate.pairAddress || "").toLowerCase();
+          if (!candidate.approved || !id || alreadyUsed.has(id) || !(Number(candidate.priceUsd) > 0)) continue;
+          this.openPaperPosition(candidate);
+          alreadyUsed.add(id);
+        }
+      }
       await this.markToMarket();
       this.state.lastPollAt = new Date().toISOString();
       this.state.lastError = null;
@@ -161,6 +175,7 @@ class PaperEngine {
     const open = this.state.positions.filter(p => p.status === "OPEN");
     if (open.length >= maxOpen || this.state.paperBalanceUsd < notional) return;
     if (open.some(p => p.pairAddress.toLowerCase() === candidate.pairAddress.toLowerCase())) return;
+    if (this.state.trades.some(t => String(t.pairAddress || "").toLowerCase() === String(candidate.pairAddress || "").toLowerCase())) return;
     if (!(candidate.priceUsd > 0)) return;
     const position = {
       id: candidate.id, pairAddress: candidate.pairAddress, tokenAddress: candidate.tokenAddress,
