@@ -68,12 +68,14 @@ class PaperEngine {
     this.state.running = true;
     this.state.startedAt = this.state.startedAt || new Date().toISOString();
     await saveState(this.state);
-    // Start polling on the server independently of the browser.
-    await this.poll();
+    // Schedule continuous polling immediately; don't delay HTTP startup on a slow API.
     if (!this.timer) {
       this.timer = setInterval(() => this.poll(), Math.max(15000, numEnv("POLL_INTERVAL_MS", 30000)));
-      this.timer.unref?.();
     }
+    this.poll().catch(error => {
+      this.state.lastError = error?.message || "Falha na consulta inicial";
+      saveState(this.state).catch(() => {});
+    });
     return this.state;
   }
   async poll() {
