@@ -195,11 +195,12 @@ class PaperEngine {
           seen.add(pairKey);
           if (result.approved) this.addLog(`ENTRADA QUALIFICADA (${candidate.chainId}): ${candidate.tokenSymbol} — score ${candidate.entryScore}/7; m5 ${candidate.priceChange5m}%; m15 ${candidate.priceChange15m}%; h1 ${candidate.priceChange1h}%; compras/vendas ${candidate.buySellRatio.toFixed(2)}x; liquidez US${candidate.liquidityUsd.toFixed(0)}.`, 'approved', { tokenSymbol: candidate.tokenSymbol, chainId: candidate.chainId, pairAddress: candidate.pairAddress, entryScore: candidate.entryScore });
           else if (this.state.candidates.length < 20) this.addLog(`Par bloqueado (${candidate.chainId}): ${candidate.tokenSymbol} — ${result.reasons.join('; ')}.`, 'blocked', { tokenSymbol: candidate.tokenSymbol, chainId: candidate.chainId });
-          if (this.state.running && result.approved) this.openPaperPosition(candidate);
         } else {
           const existing = candidatesById.get(pairKey);
           if (existing) Object.assign(existing, candidate);
         }
+        // Evaluate entry signals on every poll, not only the first time a pair is discovered.
+        if (this.state.running && result.approved) this.openPaperPosition(candidate);
       }
       this.state.seenPairAddresses = [...seen].slice(-5000);
       this.state.candidates = this.state.candidates.slice(0, 500);
