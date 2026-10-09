@@ -10,7 +10,7 @@ const chainBalances = amount => Object.fromEntries(CHAIN_IDS.map(chain => [chain
 const defaultSettings = () => Object.fromEntries(CHAIN_IDS.map(chain => [chain, {
   entryUsd: Number(process.env.PAPER_ORDER_USD || 10),
   takeProfitNetPct: Number(process.env.TAKE_PROFIT_NET_PCT || 4),
-  stopLossEnabled: true,
+  stopLossEnabled: false,
   stopLossNetPct: Number(process.env.STOP_LOSS_NET_PCT || 2.5)
 }]));
 
@@ -402,12 +402,7 @@ class PaperEngine {
               priceUpdated = true;
               const settings = this.state.settings?.[chainId] || defaultSettings()[chainId];
               const target = Number(settings.takeProfitNetPct ?? 4);
-              const stopLoss = Number(settings.stopLossNetPct ?? 2.5);
-              position.takeProfitPriceUsd = position.entryPriceUsd * (1 + (target + costPct) / 100);
-              if (settings.stopLossEnabled === true && position.estimatedNetPct <= -stopLoss) {
-                this.closePosition(position, price, "STOP_LOSS_CONFIGURADO");
-                continue;
-              }
+                      position.takeProfitPriceUsd = position.entryPriceUsd * (1 + (target + costPct) / 100);
               if (position.estimatedNetPct >= target) {
                 this.closePosition(position, price, "ALVO_LIQUIDO");
                 continue;
@@ -487,11 +482,10 @@ class PaperEngine {
       if (!item) continue;
       const entryUsd = Number(item.entryUsd);
       const takeProfitNetPct = Number(item.takeProfitNetPct);
-      const stopLossNetPct = Number(item.stopLossNetPct);
+      const stopLossNetPct = Number(item.stopLossNetPct ?? 2.5);
       if (!Number.isFinite(entryUsd) || entryUsd < 1 || entryUsd > 1000000) throw new Error(`Entrada de ${chain} deve ficar entre US$1 e US$1.000.000.`);
       if (!Number.isFinite(takeProfitNetPct) || takeProfitNetPct < 0.1 || takeProfitNetPct > 500) throw new Error(`Meta de ganho de ${chain} deve ficar entre 0,1% e 500%.`);
-      if (!Number.isFinite(stopLossNetPct) || stopLossNetPct < 0.1 || stopLossNetPct > 100) throw new Error(`Stop-loss de ${chain} deve ficar entre 0,1% e 100%.`);
-      next[chain] = { entryUsd, takeProfitNetPct, stopLossEnabled: item.stopLossEnabled === true, stopLossNetPct };
+      next[chain] = { entryUsd, takeProfitNetPct, stopLossEnabled: false, stopLossNetPct };
     }
     this.state.settings = next;
     this.state.settingsUpdatedAt = new Date().toISOString();
@@ -499,11 +493,11 @@ class PaperEngine {
     for (const position of this.state.positions.filter(p => p.status === "OPEN")) {
       const chain = String(position.chainId || "bsc").toLowerCase();
       const setting = next[chain] || defaultSettings()[chain];
-      position.stopLossEnabledAtEntry = setting.stopLossEnabled === true;
+      position.stopLossEnabledAtEntry = false;
       position.stopLossNetPctAtEntry = Number(setting.stopLossNetPct ?? 2.5);
       position.takeProfitNetPctAtEntry = Number(setting.takeProfitNetPct ?? 4);
     }
-    const stopSummary = CHAIN_IDS.map(chain => `${chain}: stop-loss ${next[chain].stopLossEnabled === true ? "ATIVADO" : "DESATIVADO"}`).join("; ");
+    const stopSummary = "Stop-loss desativado permanentemente; saídas por meta de lucro ou tempo máximo.";
     this.addLog(`Configurações salvas no servidor. ${stopSummary}. Aplicadas também às posições virtuais abertas.`, "settings");
     await saveState(this.state);
     return this.state.settings;
