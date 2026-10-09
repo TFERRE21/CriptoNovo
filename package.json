@@ -4,7 +4,13 @@
   "private": true,
   "description": "BNB Chain new-pair paper trading MVP",
   "main": "src/server.js",
-  "scripts": { "start": "node src/server.js", "check": "node --check src/server.js && node --check src/engine.js" },
+  "scripts": {
+    "start": "node src/server.js",
+    "check": "node --check src/server.js && node --check src/engine.js"
+  },
   "engines": { "node": ">=20" },
-  "dependencies": { "express": "^4.21.2" }
+  "dependencies": {
+    "dotenv": "^16.4.7",
+    "express": "^4.21.2"
+  }
 }
