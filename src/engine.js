@@ -472,7 +472,8 @@ class PaperEngine {
   async reset() {
     await this.stop();
     const initial = Number(process.env.PAPER_BALANCE_USD || 100);
-    this.state = { ...defaultState(), paperBalanceUsd: initial * CHAIN_IDS.length, initialBalanceUsd: initial * CHAIN_IDS.length, networkBalances: chainBalances(initial), running: true, startedAt: new Date().toISOString() };
+    const savedSettings = this.state.settings || defaultSettings();
+    this.state = { ...defaultState(), settings: savedSettings, paperBalanceUsd: initial * CHAIN_IDS.length, initialBalanceUsd: initial * CHAIN_IDS.length, networkBalances: chainBalances(initial), running: true, startedAt: new Date().toISOString() };
     this.addLog("NOVO EXPERIMENTO: estado anterior zerado; saldo virtual US$100 por rede; objetivo de 10 entradas de US$10 por rede (30 no total); filtros de qualidade reforçados.", "experiment");
     await saveState(this.state);
     this.timer = setInterval(() => this.poll(), Math.max(15000, numEnv("POLL_INTERVAL_MS", 30000)));
