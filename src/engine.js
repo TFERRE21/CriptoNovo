@@ -404,7 +404,7 @@ class PaperEngine {
               const target = Number(settings.takeProfitNetPct ?? 4);
               const stopLoss = Number(settings.stopLossNetPct ?? 2.5);
               position.takeProfitPriceUsd = position.entryPriceUsd * (1 + (target + costPct) / 100);
-              if (settings.stopLossEnabled && position.estimatedNetPct <= -stopLoss) {
+              if (settings.stopLossEnabled === true && position.estimatedNetPct <= -stopLoss) {
                 this.closePosition(position, price, "STOP_LOSS_CONFIGURADO");
                 continue;
               }
@@ -494,7 +494,16 @@ class PaperEngine {
       next[chain] = { entryUsd, takeProfitNetPct, stopLossEnabled: item.stopLossEnabled === true, stopLossNetPct };
     }
     this.state.settings = next;
-    this.addLog("Configurações atualizadas no painel para BNB Chain, Ethereum e Solana. Aplicam-se às próximas entradas e aos limites de saída das posições abertas.", "settings");
+    // Apply the selected stop-loss toggle immediately to already-open paper positions.
+    for (const position of this.state.positions.filter(p => p.status === "OPEN")) {
+      const chain = String(position.chainId || "bsc").toLowerCase();
+      const setting = next[chain] || defaultSettings()[chain];
+      position.stopLossEnabledAtEntry = setting.stopLossEnabled === true;
+      position.stopLossNetPctAtEntry = Number(setting.stopLossNetPct ?? 2.5);
+      position.takeProfitNetPctAtEntry = Number(setting.takeProfitNetPct ?? 4);
+    }
+    const stopSummary = CHAIN_IDS.map(chain => `${chain}: stop-loss ${next[chain].stopLossEnabled === true ? "ATIVADO" : "DESATIVADO"}`).join("; ");
+    this.addLog(`Configurações salvas no servidor. ${stopSummary}. Aplicadas também às posições virtuais abertas.`, "settings");
     await saveState(this.state);
     return this.state.settings;
   }
