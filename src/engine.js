@@ -6,7 +6,7 @@ const STATE_FILE = path.join(DATA_DIR, "state.json");
 const WBNB = "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c";
 
 const defaultState = () => ({
-  running: false, startedAt: null, lastPollAt: null, lastError: null,
+  running: false, startedAt: null, lastPollAt: null, lastError: null, pairsAnalyzed: 0,
   paperBalanceUsd: Number(process.env.PAPER_BALANCE_USD || 100),
   initialBalanceUsd: Number(process.env.PAPER_BALANCE_USD || 100),
   candidates: [], positions: [], trades: [], seenPairAddresses: []
@@ -72,22 +72,31 @@ class PaperEngine {
     if (this.polling) return;
     this.polling = true;
     try {
-      // Search endpoint is a discovery approximation, not a complete new-pair event feed. DexScreener identifies BNB Chain with chainId "bsc".
-      const response = await fetch("https://api.dexscreener.com/latest/dex/search?q=WBNB", {
-        headers: { accept: "application/json" }, signal: AbortSignal.timeout(12000)
-      });
-      if (!response.ok) throw new Error(`DexScreener respondeu HTTP ${response.status}`);
-      const data = await response.json();
-      const pairs = (Array.isArray(data.pairs) ? data.pairs : [])
-        .filter(p => String(p.chainId).toLowerCase() === "bsc")
+      // Search endpoint is approximate. Query several terms each cycle instead of repeatedly seeing only the same WBNB results.
+      const queries = ["WBNB", "BNB", "PancakeSwap", "BSC"];
+      const results = await Promise.all(queries.map(async q => {
+        const response = await fetch(`https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(q)}`, {
+          headers: { accept: "application/json" }, signal: AbortSignal.timeout(12000)
+        });
+        if (!response.ok) throw new Error(`DexScreener (${q}) respondeu HTTP ${response.status}`);
+        const data = await response.json();
+        return Array.isArray(data.pairs) ? data.pairs : [];
+      }));
+      const byAddress = new Map();
+      for (const pair of results.flat()) {
+        if (String(pair.chainId || "").toLowerCase() !== "bsc" || !pair.pairAddress) continue;
+        byAddress.set(String(pair.pairAddress).toLowerCase(), pair);
+      }
+      const pairs = [...byAddress.values()]
         .sort((a, b) => Number(b.pairCreatedAt || 0) - Number(a.pairCreatedAt || 0))
-        .slice(0, 100);
+        .slice(0, 300);
       const seen = new Set(this.state.seenPairAddresses);
       const now = Date.now();
+      this.state.pairsAnalyzed = Number(this.state.pairsAnalyzed || 0) + pairs.length;
+      const candidatesById = new Map(this.state.candidates.map(item => [String(item.id).toLowerCase(), item]));
       for (const pair of pairs) {
         const address = String(pair.pairAddress || "").toLowerCase();
-        if (!address || seen.has(address)) continue;
-        seen.add(address);
+        if (!address) continue;
         const result = evaluatePair(pair, now);
         const candidate = {
           id: address, pairAddress: pair.pairAddress,
@@ -98,10 +107,18 @@ class PaperEngine {
           liquidityUsd: result.liquidityUsd, ageMinutes: result.ageMinutes,
           volume24hUsd: Number(pair.volume?.h24 || 0), approved: result.approved,
           reasons: result.reasons, status: result.approved ? "APROVADO PARA SIMULAÇÃO" : "BLOQUEADO",
-          detectedAt: new Date(now).toISOString()
+          detectedAt: candidatesById.get(address)?.detectedAt || new Date(now).toISOString(),
+          lastSeenAt: new Date(now).toISOString()
         };
-        this.state.candidates.unshift(candidate);
-        if (this.state.running && result.approved) this.openPaperPosition(candidate);
+        const isNew = !seen.has(address);
+        if (isNew) {
+          this.state.candidates.unshift(candidate);
+          seen.add(address);
+          if (this.state.running && result.approved) this.openPaperPosition(candidate);
+        } else {
+          const existing = candidatesById.get(address);
+          if (existing) Object.assign(existing, candidate);
+        }
       }
       this.state.seenPairAddresses = [...seen].slice(-5000);
       this.state.candidates = this.state.candidates.slice(0, 500);
