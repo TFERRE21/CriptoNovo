@@ -7,12 +7,19 @@ const WBNB = "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c";
 const CHAIN_IDS = ["bsc", "ethereum", "solana"];
 const SUPPORTED_CHAINS = new Set(CHAIN_IDS);
 const chainBalances = amount => Object.fromEntries(CHAIN_IDS.map(chain => [chain, Number(amount)]));
+const defaultSettings = () => Object.fromEntries(CHAIN_IDS.map(chain => [chain, {
+  entryUsd: Number(process.env.PAPER_ORDER_USD || 10),
+  takeProfitNetPct: Number(process.env.TAKE_PROFIT_NET_PCT || 4),
+  stopLossEnabled: true,
+  stopLossNetPct: Number(process.env.STOP_LOSS_NET_PCT || 2.5)
+}]));
 
 const defaultState = () => ({
   running: false, startedAt: null, lastPollAt: null, lastError: null, pairsAnalyzed: 0, activityLogs: [], experiment: { targetEntries: 30, entriesOpened: 0, completed: false, startedAt: null },
   paperBalanceUsd: Number(process.env.PAPER_BALANCE_USD || 100) * CHAIN_IDS.length,
   initialBalanceUsd: Number(process.env.PAPER_BALANCE_USD || 100) * CHAIN_IDS.length,
   networkBalances: chainBalances(Number(process.env.PAPER_BALANCE_USD || 100)),
+  settings: defaultSettings(),
   candidates: [], positions: [], trades: [], seenPairAddresses: []
 });
 
@@ -20,7 +27,7 @@ async function loadState() {
   await fs.mkdir(DATA_DIR, { recursive: true });
   try {
     const parsed = JSON.parse(await fs.readFile(STATE_FILE, "utf8"));
-    return { ...defaultState(), ...parsed };
+    return { ...defaultState(), ...parsed, settings: { ...defaultSettings(), ...(parsed.settings || {}) } };
   } catch (e) {
     if (e.code !== "ENOENT") throw e;
     const fresh = defaultState();
@@ -344,7 +351,8 @@ class PaperEngine {
     const chainId = String(candidate.chainId || "bsc").toLowerCase();
     const chainEntries = [...this.state.positions, ...this.state.trades].filter(p => String(p.chainId || "bsc").toLowerCase() === chainId && Number(p.experimentEntryNumber) > 0).length;
     if (chainEntries >= 10 || totalEntries >= 30 || this.state.experiment.completed) return;
-    const notional = numEnv("PAPER_ORDER_USD", 10);
+    const networkSettings = this.state.settings?.[chainId] || defaultSettings()[chainId];
+    const notional = Number(networkSettings.entryUsd || 10);
     const open = this.state.positions.filter(p => p.status === "OPEN");
     this.state.networkBalances = this.state.networkBalances || chainBalances(Number(process.env.PAPER_BALANCE_USD || 100));
     if (open.length >= maxOpen || open.filter(p => String(p.chainId || "bsc").toLowerCase() === chainId).length >= 2 || Number(this.state.networkBalances[chainId] ?? 100) < notional) return;
@@ -357,7 +365,10 @@ class PaperEngine {
       notionalUsd: notional, entryPriceUsd: candidate.priceUsd, lastPriceUsd: candidate.priceUsd,
       estimatedNetPct: -numEnv("ESTIMATED_ROUNDTRIP_COST_PCT", 1.5),
       status: "OPEN", openedAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-      takeProfitPriceUsd: candidate.priceUsd * (1 + (numEnv("TAKE_PROFIT_NET_PCT", 4) + numEnv("ESTIMATED_ROUNDTRIP_COST_PCT", 1.5)) / 100),
+      takeProfitPriceUsd: candidate.priceUsd * (1 + (Number(networkSettings.takeProfitNetPct ?? 4) + numEnv("ESTIMATED_ROUNDTRIP_COST_PCT", 1.5)) / 100),
+      stopLossEnabledAtEntry: Boolean(networkSettings.stopLossEnabled),
+      stopLossNetPctAtEntry: Number(networkSettings.stopLossNetPct ?? 2.5),
+      takeProfitNetPctAtEntry: Number(networkSettings.takeProfitNetPct ?? 4),
       experimentEntryNumber: chainEntries + 1,
       entryFeatures: { liquidityUsd: Number(candidate.liquidityUsd || 0), ageMinutes: candidate.ageMinutes, volume24hUsd: Number(candidate.volume24hUsd || 0), tokenSymbol: candidate.tokenSymbol, pairAddress: candidate.pairAddress, dexId: candidate.dexId || null, priceUsd: Number(candidate.priceUsd || 0), entryScore: Number(candidate.entryScore || 0), isFreshPair: Boolean(candidate.isFreshPair), strategy: candidate.strategy || null, priceChange5m: Number(candidate.priceChange5m || 0), priceChange15m: Number(candidate.priceChange15m || 0), priceChange1h: Number(candidate.priceChange1h || 0), buySellRatio: Number(candidate.buySellRatio || 0), buySellRatio5m: Number(candidate.buySellRatio5m || 0), buys5m: Number(candidate.buys5m || 0), sells5m: Number(candidate.sells5m || 0), volume5mUsd: Number(candidate.volume5mUsd || 0) }
     };
@@ -389,10 +400,12 @@ class PaperEngine {
               position.estimatedNetPct = grossChangePct - costPct;
               position.updatedAt = new Date().toISOString();
               priceUpdated = true;
-              const target = numEnv("TAKE_PROFIT_NET_PCT", 4);
-              const stopLoss = numEnv("STOP_LOSS_NET_PCT", 2.5);
-              if (position.estimatedNetPct <= -stopLoss) {
-                this.closePosition(position, price, "STOP_LOSS_NET_2_5_PCT");
+              const settings = this.state.settings?.[chainId] || defaultSettings()[chainId];
+              const target = Number(settings.takeProfitNetPct ?? 4);
+              const stopLoss = Number(settings.stopLossNetPct ?? 2.5);
+              position.takeProfitPriceUsd = position.entryPriceUsd * (1 + (target + costPct) / 100);
+              if (settings.stopLossEnabled && position.estimatedNetPct <= -stopLoss) {
+                this.closePosition(position, price, "STOP_LOSS_CONFIGURADO");
                 continue;
               }
               if (position.estimatedNetPct >= target) {
@@ -465,11 +478,31 @@ class PaperEngine {
     this.timer = setInterval(() => this.poll(), Math.max(15000, numEnv("POLL_INTERVAL_MS", 30000)));
     this.poll().catch(error => { this.state.lastError = error.message || "Falha na consulta inicial"; saveState(this.state).catch(() => {}); });
   }
+  async updateSettings(input) {
+    if (!input || typeof input !== "object") throw new Error("Configurações inválidas.");
+    const next = { ...defaultSettings(), ...(this.state.settings || {}) };
+    for (const chain of CHAIN_IDS) {
+      const item = input[chain];
+      if (!item) continue;
+      const entryUsd = Number(item.entryUsd);
+      const takeProfitNetPct = Number(item.takeProfitNetPct);
+      const stopLossNetPct = Number(item.stopLossNetPct);
+      if (!Number.isFinite(entryUsd) || entryUsd < 1 || entryUsd > 1000000) throw new Error(`Entrada de ${chain} deve ficar entre US$1 e US$1.000.000.`);
+      if (!Number.isFinite(takeProfitNetPct) || takeProfitNetPct < 0.1 || takeProfitNetPct > 500) throw new Error(`Meta de ganho de ${chain} deve ficar entre 0,1% e 500%.`);
+      if (!Number.isFinite(stopLossNetPct) || stopLossNetPct < 0.1 || stopLossNetPct > 100) throw new Error(`Stop-loss de ${chain} deve ficar entre 0,1% e 100%.`);
+      next[chain] = { entryUsd, takeProfitNetPct, stopLossEnabled: item.stopLossEnabled === true, stopLossNetPct };
+    }
+    this.state.settings = next;
+    this.addLog("Configurações atualizadas no painel para BNB Chain, Ethereum e Solana. Aplicam-se às próximas entradas e aos limites de saída das posições abertas.", "settings");
+    await saveState(this.state);
+    return this.state.settings;
+  }
   snapshot() {
     const positions = this.state.positions.filter(p => p.status === "OPEN");
     const realizedPnlUsd = this.state.trades.reduce((sum, t) => sum + Number(t.pnlUsd || 0), 0);
     return { ...this.state, positions, openPositionsCount: positions.length,
       closedTradesCount: this.state.trades.length, experiment: { targetEntries: 30, entriesOpened: 0, completed: false, ...(this.state.experiment || {}) }, realizedPnlUsd: Number(realizedPnlUsd.toFixed(4)),
+      settings: { ...defaultSettings(), ...(this.state.settings || {}) },
       targetNetPct: numEnv("TAKE_PROFIT_NET_PCT", 4), mode: "PAPER" };
   }
 }
