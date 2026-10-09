@@ -64,8 +64,16 @@ class PaperEngine {
   constructor() { this.state = null; this.timer = null; this.polling = false; }
   async init() {
     this.state = await loadState();
-    this.state.running = false; // Always require a manual start after process restart.
+    // Keep the monitor running across dashboard navigation and refreshes.
+    this.state.running = true;
+    this.state.startedAt = this.state.startedAt || new Date().toISOString();
     await saveState(this.state);
+    // Start polling on the server independently of the browser.
+    await this.poll();
+    if (!this.timer) {
+      this.timer = setInterval(() => this.poll(), Math.max(15000, numEnv("POLL_INTERVAL_MS", 30000)));
+      this.timer.unref?.();
+    }
     return this.state;
   }
   async poll() {
