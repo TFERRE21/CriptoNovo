@@ -455,11 +455,11 @@ class PaperEngine {
     this.state.trades = this.state.trades.slice(0, 500);
   }
   async start() {
-    if (this.state.running) { this.addLog('Comando iniciar recebido: monitor já estava ativo.', 'info'); await saveState(this.state); return; }
+    if (this.state.running && this.timer) { this.addLog('Comando iniciar recebido: monitor já estava ativo.', 'info'); await saveState(this.state); return; }
     this.addLog('Monitor de simulação iniciado manualmente.', 'info');
-    this.state.running = true; this.state.startedAt = new Date().toISOString();
+    this.state.running = true; this.state.startedAt = this.state.startedAt || new Date().toISOString();
+    if (!this.timer) this.timer = setInterval(() => this.poll(), Math.max(15000, numEnv("POLL_INTERVAL_MS", 30000)));
     await this.poll();
-    this.timer = setInterval(() => this.poll(), Math.max(15000, numEnv("POLL_INTERVAL_MS", 30000)));
     await saveState(this.state);
   }
   async stop() {
