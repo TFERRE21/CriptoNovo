@@ -4,7 +4,7 @@ const path = require("node:path");
 const DATA_DIR = path.join(__dirname, "..", "data");
 const STATE_FILE = path.join(DATA_DIR, "state.json");
 const WBNB = "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c";
-const CHAIN_IDS = ["bsc", "ethereum", "solana", "base", "arbitrum", "optimism", "polygon", "avalanche"];
+const CHAIN_IDS = ["bsc", "ethereum", "solana"];
 const SUPPORTED_CHAINS = new Set(CHAIN_IDS);
 const chainBalances = amount => Object.fromEntries(CHAIN_IDS.map(chain => [chain, Number(amount)]));
 
@@ -39,12 +39,25 @@ function numEnv(name, fallback) {
   return Number.isFinite(n) && n >= 0 ? n : fallback;
 }
 function tokenSide(pair) {
-  const baseIsWbnb = String(pair?.baseToken?.address || "").toLowerCase() === WBNB;
-  const quoteIsWbnb = String(pair?.quoteToken?.address || "").toLowerCase() === WBNB;
-  if (baseIsWbnb) return { token: pair.quoteToken, priceUsd: Number(pair.priceUsd || 0) > 0 && Number(pair.priceNative || 0) > 0 ? Number(pair.priceUsd) / Number(pair.priceNative) : 0 };
-  if (quoteIsWbnb) return { token: pair.baseToken, priceUsd: Number(pair.priceUsd || 0) };
-  return { token: pair.baseToken, priceUsd: Number(pair.priceUsd || 0) };
+  const base = pair?.baseToken || {};
+  const quote = pair?.quoteToken || {};
+  const baseSymbol = String(base.symbol || "").toUpperCase();
+  const quoteSymbol = String(quote.symbol || "").toUpperCase();
+  const wrappedNativeOrStable = new Set([
+    "WBNB", "BNB", "WETH", "ETH", "USDC", "USDT", "DAI", "FDUSD", "BUSD",
+    "SOL", "WSOL", "USDS", "USDE", "USDBC", "WAVAX", "AVAX", "WMATIC", "MATIC"
+  ]);
+  const baseIsQuoteAsset = wrappedNativeOrStable.has(baseSymbol);
+  const quoteIsQuoteAsset = wrappedNativeOrStable.has(quoteSymbol);
+  const basePriceUsd = Number(pair?.priceUsd || 0);
+  const priceNative = Number(pair?.priceNative || 0);
+  if (baseIsQuoteAsset && !quoteIsQuoteAsset && priceNative > 0 && basePriceUsd > 0) {
+    return { token: quote, priceUsd: basePriceUsd / priceNative };
+  }
+  if (quoteIsQuoteAsset && !baseIsQuoteAsset) return { token: base, priceUsd: basePriceUsd };
+  return { token: base, priceUsd: basePriceUsd };
 }
+
 function evaluatePair(pair, now = Date.now()) {
   const liquidity = Number(pair?.liquidity?.usd || 0);
   const createdAt = Number(pair?.pairCreatedAt || 0);
@@ -102,7 +115,7 @@ class PaperEngine {
     this.polling = true;
     try {
       // Search endpoint is approximate. Query several terms each cycle instead of repeatedly seeing only the same WBNB results.
-      const queries = ["WBNB", "BNB", "PancakeSwap", "BSC", "WETH", "ETH", "ETH USDC", "WETH USDC", "Uniswap", "Ethereum", "SOL", "SOL USDC", "Raydium", "Solana", "Base", "Aerodrome", "Arbitrum", "Optimism", "Polygon", "Avalanche", "AVAX", "MATIC"];
+      const queries = ["WBNB USDT", "WBNB USDC", "BNB", "PancakeSwap", "WETH USDC", "WETH USDT", "ETH USDC", "PEPE WETH", "SHIB WETH", "LINK WETH", "UNI WETH", "Uniswap", "SOL USDC", "SOL USDT", "Raydium", "Solana"];
       const results = await Promise.all(queries.map(async q => {
         const response = await fetch(`https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(q)}`, {
           headers: { accept: "application/json" }, signal: AbortSignal.timeout(12000)
