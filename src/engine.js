@@ -62,14 +62,7 @@ function evaluatePair(pair, now = Date.now()) {
   const liquidity = Number(pair?.liquidity?.usd || 0);
   const createdAt = Number(pair?.pairCreatedAt || 0);
   const ageHours = createdAt > 0 ? (now - createdAt) / 3600000 : Infinity;
-  // Newly created pairs need a different profile from established markets.
-  const isFreshPair = Number.isFinite(ageHours) && ageHours >= 0 && ageHours <= numEnv("FRESH_PAIR_MAX_AGE_HOURS", 6);
-  const minLiquidity = numEnv("MIN_LIQUIDITY_USD", 5000);
-  const minFreshLiquidity = numEnv("MIN_FRESH_LIQUIDITY_USD", 3000);
-  const minVolume24h = numEnv("MIN_VOLUME_24H_USD", 50000);
-  const minFreshVolume5m = numEnv("MIN_FRESH_VOLUME_5M_USD", 1500);
-  const minTxns1h = numEnv("MIN_TXNS_1H", 20);
-  const minFreshTxns5m = numEnv("MIN_FRESH_TXNS_5M", 8);
+  const chain = String(pair?.chainId || "").toLowerCase();
   const volume24h = Number(pair?.volume?.h24 || 0);
   const txns1h = Number(pair?.txns?.h1?.buys || 0) + Number(pair?.txns?.h1?.sells || 0);
   const buys1h = Number(pair?.txns?.h1?.buys || 0);
@@ -80,46 +73,109 @@ function evaluatePair(pair, now = Date.now()) {
   const priceChange15m = Number(pair?.priceChange?.m15 || 0);
   const priceChange1h = Number(pair?.priceChange?.h1 || 0);
   const volume5m = Number(pair?.volume?.m5 || 0);
-  const maxAge = numEnv("MAX_PAIR_AGE_HOURS", 720);
-  const minAge = numEnv("MIN_PAIR_AGE_MINUTES", 0);
+  const minLiquidity = numEnv("MIN_LIQUIDITY_USD", 5000);
+  const minVolume24h = numEnv("MIN_VOLUME_24H_USD", 50000);
+  const minTxns1h = numEnv("MIN_TXNS_1H", 20);
   const minBuyRatio = numEnv("MIN_BUY_SELL_RATIO", 1.15);
+  const isFreshPair = Number.isFinite(ageHours) && ageHours >= 0 && ageHours <= numEnv("FRESH_PAIR_MAX_AGE_HOURS", 6);
   const reasons = [];
+
   if (!pair?.pairAddress || !pair?.baseToken?.address || !pair?.quoteToken?.address) reasons.push("Dados incompletos");
-  if (!SUPPORTED_CHAINS.has(String(pair?.chainId || "").toLowerCase())) reasons.push("Rede não habilitada");
-  if (liquidity < (isFreshPair ? minFreshLiquidity : minLiquidity)) reasons.push(`Liquidez abaixo do mínimo (${isFreshPair ? minFreshLiquidity : minLiquidity} USD)`);
-  if (isFreshPair) {
-    if (volume5m < minFreshVolume5m) reasons.push(`Volume recente abaixo do mínimo (${minFreshVolume5m} USD/5 min)`);
-    if (buys5m + sells5m < minFreshTxns5m) reasons.push(`Poucas transações em 5 min (${buys5m + sells5m}/${minFreshTxns5m})`);
-    if (buys5m <= sells5m) reasons.push("Moeda nova sem pressão compradora confirmada em 5 min");
-    if (priceChange5m <= 0) reasons.push("Moeda nova sem momentum positivo em 5 min");
-    if (priceChange5m > numEnv("MAX_FRESH_PRICE_CHANGE_5M_PCT", 12)) reasons.push("Moeda nova já subiu demais em 5 min");
-  } else {
-    if (volume24h < minVolume24h) reasons.push(`Volume 24h abaixo do mínimo (${minVolume24h} USD)`);
-    if (txns1h < minTxns1h) reasons.push(`Poucas transações na última hora (${txns1h}/${minTxns1h})`);
-    if (txns1h >= minTxns1h && buys1h < sells1h) reasons.push("Pressão vendedora na última hora");
-    if (txns1h > 0 && buys1h / Math.max(sells1h, 1) < minBuyRatio) reasons.push(`Compras sem força suficiente (relação ${(buys1h / Math.max(sells1h, 1)).toFixed(2)}x)`);
-    if (priceChange15m < numEnv("MIN_PRICE_CHANGE_15M_PCT", 0.3)) reasons.push("Tendência de 15 minutos fraca");
-    if (priceChange1h < numEnv("MIN_PRICE_CHANGE_1H_PCT", 0.5)) reasons.push("Tendência de 1 hora insuficiente");
-    if (priceChange1h > numEnv("MAX_PRICE_CHANGE_1H_PCT", 15)) reasons.push("Alta excessiva em 1 hora");
+  if (!SUPPORTED_CHAINS.has(chain)) reasons.push("Rede não habilitada");
+
+  let entryScore = 0;
+  let strategy = "ETH_TREND";
+  if (chain === "ethereum") {
+    // Keep Ethereum's existing strategy unchanged: it was the best performer in the user's sample.
+    const minFreshLiquidity = numEnv("MIN_FRESH_LIQUIDITY_USD", 3000);
+    const minFreshVolume5m = numEnv("MIN_FRESH_VOLUME_5M_USD", 1500);
+    const minFreshTxns5m = numEnv("MIN_FRESH_TXNS_5M", 8);
+    const maxAge = numEnv("MAX_PAIR_AGE_HOURS", 720);
+    const minAge = numEnv("MIN_PAIR_AGE_MINUTES", 0);
+    if (liquidity < (isFreshPair ? minFreshLiquidity : minLiquidity)) reasons.push(`Liquidez abaixo do mínimo (${isFreshPair ? minFreshLiquidity : minLiquidity} USD)`);
+    if (isFreshPair) {
+      if (volume5m < minFreshVolume5m) reasons.push(`Volume recente abaixo do mínimo (${minFreshVolume5m} USD/5 min)`);
+      if (buys5m + sells5m < minFreshTxns5m) reasons.push(`Poucas transações em 5 min (${buys5m + sells5m}/${minFreshTxns5m})`);
+      if (buys5m <= sells5m) reasons.push("Moeda nova sem pressão compradora confirmada em 5 min");
+      if (priceChange5m <= 0) reasons.push("Moeda nova sem momentum positivo em 5 min");
+      if (priceChange5m > numEnv("MAX_FRESH_PRICE_CHANGE_5M_PCT", 12)) reasons.push("Moeda nova já subiu demais em 5 min");
+    } else {
+      if (volume24h < minVolume24h) reasons.push(`Volume 24h abaixo do mínimo (${minVolume24h} USD)`);
+      if (txns1h < minTxns1h) reasons.push(`Poucas transações na última hora (${txns1h}/${minTxns1h})`);
+      if (txns1h >= minTxns1h && buys1h < sells1h) reasons.push("Pressão vendedora na última hora");
+      if (txns1h > 0 && buys1h / Math.max(sells1h, 1) < minBuyRatio) reasons.push(`Compras sem força suficiente (relação ${(buys1h / Math.max(sells1h, 1)).toFixed(2)}x)`);
+      if (priceChange15m < numEnv("MIN_PRICE_CHANGE_15M_PCT", 0.3)) reasons.push("Tendência de 15 minutos fraca");
+      if (priceChange1h < numEnv("MIN_PRICE_CHANGE_1H_PCT", 0.5)) reasons.push("Tendência de 1 hora insuficiente");
+      if (priceChange1h > numEnv("MAX_PRICE_CHANGE_1H_PCT", 15)) reasons.push("Alta excessiva em 1 hora");
+    }
+    if (!Number.isFinite(ageHours) || ageHours < minAge / 60 || ageHours > maxAge) reasons.push("Idade do par ausente ou fora do limite");
+    if (!isFreshPair && priceChange5m > numEnv("MAX_PRICE_CHANGE_5M_PCT", 4)) reasons.push("Alta muito acelerada em 5 minutos; risco de comprar no topo");
+    if (!isFreshPair && priceChange15m > numEnv("MAX_PRICE_CHANGE_15M_PCT", 8)) reasons.push("Alta excessiva em 15 minutos");
+    if (buys5m + sells5m < (isFreshPair ? minFreshTxns5m : numEnv("MIN_TXNS_5M", 3))) reasons.push("Pouca confirmação de negociação nos últimos 5 minutos");
+    if (volume5m <= 0) reasons.push("Sem volume recente confirmado");
+    entryScore = [
+      liquidity >= (isFreshPair ? minFreshLiquidity * 2 : minLiquidity * 2),
+      isFreshPair ? volume5m >= minFreshVolume5m * 2 : volume24h >= minVolume24h * 2,
+      isFreshPair ? buys5m > sells5m : buys1h > sells1h,
+      buys5m > sells5m,
+      priceChange5m > 0 && priceChange5m <= (isFreshPair ? 8 : 3),
+      priceChange15m >= 0.5 && priceChange15m <= 5,
+      priceChange1h >= 1 && priceChange1h <= 10
+    ].filter(Boolean).length;
+  } else if (chain === "bsc") {
+    // BNB Chain: early launch momentum, but avoid the first chaotic seconds and extreme candles.
+    strategy = "BSC_EARLY_MOMENTUM";
+    const minAgeMinutes = numEnv("BSC_MIN_AGE_MINUTES", 2);
+    const maxAgeHours = numEnv("BSC_MAX_AGE_HOURS", 6);
+    const minLiq = numEnv("BSC_MIN_LIQUIDITY_USD", 4000);
+    const minVol5m = numEnv("BSC_MIN_VOLUME_5M_USD", 2000);
+    const minTx5m = numEnv("BSC_MIN_TXNS_5M", 10);
+    const minRatio = numEnv("BSC_MIN_BUY_SELL_RATIO_5M", 1.3);
+    const maxChange5m = numEnv("BSC_MAX_PRICE_CHANGE_5M_PCT", 8);
+    if (!Number.isFinite(ageHours) || ageHours * 60 < minAgeMinutes || ageHours > maxAgeHours) reasons.push("BNB: par fora da janela inicial de lançamento");
+    if (liquidity < minLiq) reasons.push(`BNB: liquidez abaixo de US$${minLiq}`);
+    if (volume5m < minVol5m) reasons.push(`BNB: volume de 5 min abaixo de US$${minVol5m}`);
+    if (buys5m + sells5m < minTx5m) reasons.push(`BNB: menos de ${minTx5m} transações em 5 min`);
+    if (buys5m / Math.max(sells5m, 1) < minRatio) reasons.push(`BNB: pressão compradora abaixo de ${minRatio}x`);
+    if (priceChange5m <= 0) reasons.push("BNB: momentum de 5 min não positivo");
+    if (priceChange5m > maxChange5m) reasons.push("BNB: alta de 5 min excessiva; possível compra no topo");
+    if (volume5m <= 0) reasons.push("BNB: sem volume recente verificável");
+    entryScore = [
+      liquidity >= minLiq * 2, volume5m >= minVol5m * 2,
+      buys5m > sells5m * minRatio,
+      priceChange5m > 0 && priceChange5m <= maxChange5m / 2,
+      buys5m + sells5m >= minTx5m * 2
+    ].filter(Boolean).length;
+  } else if (chain === "solana") {
+    // Solana: faster meme-token flow, requiring more liquidity and stronger short-term demand.
+    strategy = "SOLANA_FAST_FLOW";
+    const minAgeMinutes = numEnv("SOL_MIN_AGE_MINUTES", 1);
+    const maxAgeHours = numEnv("SOL_MAX_AGE_HOURS", 12);
+    const minLiq = numEnv("SOL_MIN_LIQUIDITY_USD", 7000);
+    const minVol5m = numEnv("SOL_MIN_VOLUME_5M_USD", 4000);
+    const minTx5m = numEnv("SOL_MIN_TXNS_5M", 15);
+    const minRatio = numEnv("SOL_MIN_BUY_SELL_RATIO_5M", 1.4);
+    const maxChange5m = numEnv("SOL_MAX_PRICE_CHANGE_5M_PCT", 6);
+    if (!Number.isFinite(ageHours) || ageHours * 60 < minAgeMinutes || ageHours > maxAgeHours) reasons.push("Solana: par fora da janela inicial de lançamento");
+    if (liquidity < minLiq) reasons.push(`Solana: liquidez abaixo de US$${minLiq}`);
+    if (volume5m < minVol5m) reasons.push(`Solana: volume de 5 min abaixo de US$${minVol5m}`);
+    if (buys5m + sells5m < minTx5m) reasons.push(`Solana: menos de ${minTx5m} transações em 5 min`);
+    if (buys5m / Math.max(sells5m, 1) < minRatio) reasons.push(`Solana: pressão compradora abaixo de ${minRatio}x`);
+    if (priceChange5m <= 0) reasons.push("Solana: momentum de 5 min não positivo");
+    if (priceChange5m > maxChange5m) reasons.push("Solana: alta de 5 min excessiva; possível compra no topo");
+    if (volume5m <= 0) reasons.push("Solana: sem volume recente verificável");
+    entryScore = [
+      liquidity >= minLiq * 2, volume5m >= minVol5m * 2,
+      buys5m > sells5m * minRatio,
+      priceChange5m > 0 && priceChange5m <= maxChange5m / 2,
+      buys5m + sells5m >= minTx5m * 2
+    ].filter(Boolean).length;
   }
-  if (!Number.isFinite(ageHours) || ageHours < 0 || ageHours > maxAge) reasons.push("Idade do par ausente ou fora do limite");
-  if (priceChange5m > numEnv("MAX_PRICE_CHANGE_5M_PCT", 4) && !isFreshPair) reasons.push("Alta muito acelerada em 5 minutos; risco de comprar no topo");
-  if (priceChange15m > numEnv("MAX_PRICE_CHANGE_15M_PCT", 8) && !isFreshPair) reasons.push("Alta excessiva em 15 minutos");
-  if (buys5m + sells5m < (isFreshPair ? minFreshTxns5m : numEnv("MIN_TXNS_5M", 3))) reasons.push("Pouca confirmação de negociação nos últimos 5 minutos");
-  if (volume5m <= 0) reasons.push("Sem volume recente confirmado");
+
   const selected = tokenSide(pair);
   if (!selected.token?.address || !(selected.priceUsd > 0)) reasons.push("Preço ou token negociável indisponível");
   if (String(pair?.dexId || "").length === 0) reasons.push("DEX não identificada");
-  const entryScore = [
-    liquidity >= (isFreshPair ? minFreshLiquidity * 2 : minLiquidity * 2),
-    isFreshPair ? volume5m >= minFreshVolume5m * 2 : volume24h >= minVolume24h * 2,
-    isFreshPair ? buys5m > sells5m : buys1h > sells1h,
-    buys5m > sells5m,
-    priceChange5m > 0 && priceChange5m <= (isFreshPair ? 8 : 3),
-    priceChange15m >= 0.5 && priceChange15m <= 5,
-    priceChange1h >= 1 && priceChange1h <= 10
-  ].filter(Boolean).length;
-  return { approved: reasons.length === 0, reasons, entryScore, isFreshPair, liquidityUsd: liquidity, volume24hUsd: volume24h, txns1h, buys1h, sells1h,
+  return { approved: reasons.length === 0, reasons, entryScore, strategy, isFreshPair, liquidityUsd: liquidity, volume24hUsd: volume24h, txns1h, buys1h, sells1h,
     buys5m, sells5m, volume5mUsd: volume5m, priceChange5m, priceChange15m, priceChange1h,
     buySellRatio: buys1h / Math.max(sells1h, 1),
     ageMinutes: Number.isFinite(ageHours) ? Math.round(ageHours * 60) : null,
@@ -226,7 +282,7 @@ class PaperEngine {
           tokenSymbol: result.token?.symbol || "?",
           url: pair.url || "", priceUsd: result.priceUsd,
           liquidityUsd: result.liquidityUsd, ageMinutes: result.ageMinutes, dexId: pair.dexId || "",
-          volume24hUsd: Number(pair.volume?.h24 || 0), txns1h: result.txns1h, buys1h: result.buys1h, sells1h: result.sells1h, isFreshPair: result.isFreshPair,
+          volume24hUsd: Number(pair.volume?.h24 || 0), txns1h: result.txns1h, buys1h: result.buys1h, sells1h: result.sells1h, isFreshPair: result.isFreshPair, strategy: result.strategy,
           buys5m: result.buys5m, sells5m: result.sells5m, volume5mUsd: result.volume5mUsd,
           priceChange5m: result.priceChange5m, priceChange15m: result.priceChange15m, priceChange1h: result.priceChange1h,
           buySellRatio: result.buySellRatio, entryScore: result.entryScore, approved: result.approved,
@@ -238,7 +294,7 @@ class PaperEngine {
         if (isNew) {
           this.state.candidates.unshift(candidate);
           seen.add(pairKey);
-          if (result.approved) this.addLog(`ENTRADA QUALIFICADA (${candidate.chainId}): ${candidate.tokenSymbol} — ${candidate.isFreshPair ? "MOEDA RECENTE" : "PAR ESTABELECIDO"}; score ${candidate.entryScore}/7; m5 ${candidate.priceChange5m}%; m15 ${candidate.priceChange15m}%; h1 ${candidate.priceChange1h}%; compras/vendas ${candidate.buySellRatio.toFixed(2)}x; liquidez US${candidate.liquidityUsd.toFixed(0)}.`, 'approved', { tokenSymbol: candidate.tokenSymbol, chainId: candidate.chainId, pairAddress: candidate.pairAddress, entryScore: candidate.entryScore });
+          if (result.approved) this.addLog(`ENTRADA QUALIFICADA (${candidate.chainId}): ${candidate.tokenSymbol} — ${candidate.strategy || (candidate.isFreshPair ? "MOEDA RECENTE" : "PAR ESTABELECIDO")}; score ${candidate.entryScore}/7; m5 ${candidate.priceChange5m}%; m15 ${candidate.priceChange15m}%; h1 ${candidate.priceChange1h}%; compras/vendas ${candidate.buySellRatio.toFixed(2)}x; liquidez US${candidate.liquidityUsd.toFixed(0)}.`, 'approved', { tokenSymbol: candidate.tokenSymbol, chainId: candidate.chainId, pairAddress: candidate.pairAddress, entryScore: candidate.entryScore });
           else if (this.state.candidates.length < 20) this.addLog(`Par bloqueado (${candidate.chainId}): ${candidate.tokenSymbol} — ${result.reasons.join('; ')}.`, 'blocked', { tokenSymbol: candidate.tokenSymbol, chainId: candidate.chainId });
         } else {
           const existing = candidatesById.get(pairKey);
@@ -283,7 +339,7 @@ class PaperEngine {
       status: "OPEN", openedAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
       takeProfitPriceUsd: candidate.priceUsd * (1 + (numEnv("TAKE_PROFIT_NET_PCT", 4) + numEnv("ESTIMATED_ROUNDTRIP_COST_PCT", 1.5)) / 100),
       experimentEntryNumber: chainEntries + 1,
-      entryFeatures: { liquidityUsd: Number(candidate.liquidityUsd || 0), ageMinutes: candidate.ageMinutes, volume24hUsd: Number(candidate.volume24hUsd || 0), tokenSymbol: candidate.tokenSymbol, pairAddress: candidate.pairAddress, dexId: candidate.dexId || null, priceUsd: Number(candidate.priceUsd || 0), entryScore: Number(candidate.entryScore || 0), isFreshPair: Boolean(candidate.isFreshPair), priceChange5m: Number(candidate.priceChange5m || 0), priceChange15m: Number(candidate.priceChange15m || 0), priceChange1h: Number(candidate.priceChange1h || 0), buySellRatio: Number(candidate.buySellRatio || 0) }
+      entryFeatures: { liquidityUsd: Number(candidate.liquidityUsd || 0), ageMinutes: candidate.ageMinutes, volume24hUsd: Number(candidate.volume24hUsd || 0), tokenSymbol: candidate.tokenSymbol, pairAddress: candidate.pairAddress, dexId: candidate.dexId || null, priceUsd: Number(candidate.priceUsd || 0), entryScore: Number(candidate.entryScore || 0), isFreshPair: Boolean(candidate.isFreshPair), strategy: candidate.strategy || null, priceChange5m: Number(candidate.priceChange5m || 0), priceChange15m: Number(candidate.priceChange15m || 0), priceChange1h: Number(candidate.priceChange1h || 0), buySellRatio: Number(candidate.buySellRatio || 0) }
     };
     this.state.networkBalances[chainId] = Number(this.state.networkBalances[chainId] ?? 100) - notional;
     this.state.paperBalanceUsd = Object.values(this.state.networkBalances).reduce((sum, value) => sum + Number(value || 0), 0);
