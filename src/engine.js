@@ -172,12 +172,24 @@ function evaluatePair(pair, now = Date.now()) {
     ].filter(Boolean).length;
   }
 
+  // Shared confirmation pattern based on the profitable sample: recent buy pressure + active volume + controlled momentum.
+  // The screenshot does not contain the winners' historical entry metrics, so this is a testable hypothesis, not a proven causal pattern.
+  const buySellRatio5m = buys5m / Math.max(sells5m, 1);
+  const minCommonBuyRatio = chain === "solana" ? 1.4 : chain === "bsc" ? 1.3 : 1.25;
+  const minCommonTxns5m = chain === "solana" ? 15 : chain === "bsc" ? 10 : 8;
+  if (buys5m + sells5m < minCommonTxns5m) reasons.push(`Confirmação comum: menos de ${minCommonTxns5m} transações em 5 min`);
+  if (buySellRatio5m < minCommonBuyRatio) reasons.push(`Confirmação comum: relação compras/vendas em 5 min abaixo de ${minCommonBuyRatio}x`);
+  if (buys5m <= sells5m) reasons.push("Confirmação comum: vendas iguais ou superiores às compras nos últimos 5 min");
+  if (priceChange5m <= 0) reasons.push("Confirmação comum: preço sem impulso positivo em 5 min");
+  if (volume5m <= 0) reasons.push("Confirmação comum: sem volume recente");
+  if (entryScore < 3) reasons.push(`Qualidade de entrada insuficiente (score ${entryScore}; mínimo 3)`);
+
   const selected = tokenSide(pair);
   if (!selected.token?.address || !(selected.priceUsd > 0)) reasons.push("Preço ou token negociável indisponível");
   if (String(pair?.dexId || "").length === 0) reasons.push("DEX não identificada");
   return { approved: reasons.length === 0, reasons, entryScore, strategy, isFreshPair, liquidityUsd: liquidity, volume24hUsd: volume24h, txns1h, buys1h, sells1h,
     buys5m, sells5m, volume5mUsd: volume5m, priceChange5m, priceChange15m, priceChange1h,
-    buySellRatio: buys1h / Math.max(sells1h, 1),
+    buySellRatio: buys1h / Math.max(sells1h, 1), buySellRatio5m,
     ageMinutes: Number.isFinite(ageHours) ? Math.round(ageHours * 60) : null,
     token: selected.token, priceUsd: selected.priceUsd };
 }
@@ -285,7 +297,7 @@ class PaperEngine {
           volume24hUsd: Number(pair.volume?.h24 || 0), txns1h: result.txns1h, buys1h: result.buys1h, sells1h: result.sells1h, isFreshPair: result.isFreshPair, strategy: result.strategy,
           buys5m: result.buys5m, sells5m: result.sells5m, volume5mUsd: result.volume5mUsd,
           priceChange5m: result.priceChange5m, priceChange15m: result.priceChange15m, priceChange1h: result.priceChange1h,
-          buySellRatio: result.buySellRatio, entryScore: result.entryScore, approved: result.approved,
+          buySellRatio: result.buySellRatio, buySellRatio5m: result.buySellRatio5m, entryScore: result.entryScore, approved: result.approved,
           reasons: result.reasons, status: result.approved ? (result.isFreshPair ? "MOEDA NOVA — SINAL CONFIRMADO" : "APROVADO — MOMENTUM CONFIRMADO") : "BLOQUEADO",
           detectedAt: candidatesById.get(pairKey)?.detectedAt || new Date(now).toISOString(),
           lastSeenAt: new Date(now).toISOString()
@@ -294,7 +306,7 @@ class PaperEngine {
         if (isNew) {
           this.state.candidates.unshift(candidate);
           seen.add(pairKey);
-          if (result.approved) this.addLog(`ENTRADA QUALIFICADA (${candidate.chainId}): ${candidate.tokenSymbol} — ${candidate.strategy || (candidate.isFreshPair ? "MOEDA RECENTE" : "PAR ESTABELECIDO")}; score ${candidate.entryScore}/7; m5 ${candidate.priceChange5m}%; m15 ${candidate.priceChange15m}%; h1 ${candidate.priceChange1h}%; compras/vendas ${candidate.buySellRatio.toFixed(2)}x; liquidez US${candidate.liquidityUsd.toFixed(0)}.`, 'approved', { tokenSymbol: candidate.tokenSymbol, chainId: candidate.chainId, pairAddress: candidate.pairAddress, entryScore: candidate.entryScore });
+          if (result.approved) this.addLog(`ENTRADA QUALIFICADA (${candidate.chainId}): ${candidate.tokenSymbol} — ${candidate.strategy || (candidate.isFreshPair ? "MOEDA RECENTE" : "PAR ESTABELECIDO")}; score ${candidate.entryScore}/7; m5 ${candidate.priceChange5m}%; m15 ${candidate.priceChange15m}%; h1 ${candidate.priceChange1h}%; compras/vendas m5 ${Number(candidate.buySellRatio5m || 0).toFixed(2)}x; liquidez US${candidate.liquidityUsd.toFixed(0)}.`, 'approved', { tokenSymbol: candidate.tokenSymbol, chainId: candidate.chainId, pairAddress: candidate.pairAddress, entryScore: candidate.entryScore });
           else if (this.state.candidates.length < 20) this.addLog(`Par bloqueado (${candidate.chainId}): ${candidate.tokenSymbol} — ${result.reasons.join('; ')}.`, 'blocked', { tokenSymbol: candidate.tokenSymbol, chainId: candidate.chainId });
         } else {
           const existing = candidatesById.get(pairKey);
@@ -339,7 +351,7 @@ class PaperEngine {
       status: "OPEN", openedAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
       takeProfitPriceUsd: candidate.priceUsd * (1 + (numEnv("TAKE_PROFIT_NET_PCT", 4) + numEnv("ESTIMATED_ROUNDTRIP_COST_PCT", 1.5)) / 100),
       experimentEntryNumber: chainEntries + 1,
-      entryFeatures: { liquidityUsd: Number(candidate.liquidityUsd || 0), ageMinutes: candidate.ageMinutes, volume24hUsd: Number(candidate.volume24hUsd || 0), tokenSymbol: candidate.tokenSymbol, pairAddress: candidate.pairAddress, dexId: candidate.dexId || null, priceUsd: Number(candidate.priceUsd || 0), entryScore: Number(candidate.entryScore || 0), isFreshPair: Boolean(candidate.isFreshPair), strategy: candidate.strategy || null, priceChange5m: Number(candidate.priceChange5m || 0), priceChange15m: Number(candidate.priceChange15m || 0), priceChange1h: Number(candidate.priceChange1h || 0), buySellRatio: Number(candidate.buySellRatio || 0) }
+      entryFeatures: { liquidityUsd: Number(candidate.liquidityUsd || 0), ageMinutes: candidate.ageMinutes, volume24hUsd: Number(candidate.volume24hUsd || 0), tokenSymbol: candidate.tokenSymbol, pairAddress: candidate.pairAddress, dexId: candidate.dexId || null, priceUsd: Number(candidate.priceUsd || 0), entryScore: Number(candidate.entryScore || 0), isFreshPair: Boolean(candidate.isFreshPair), strategy: candidate.strategy || null, priceChange5m: Number(candidate.priceChange5m || 0), priceChange15m: Number(candidate.priceChange15m || 0), priceChange1h: Number(candidate.priceChange1h || 0), buySellRatio: Number(candidate.buySellRatio || 0), buySellRatio5m: Number(candidate.buySellRatio5m || 0), buys5m: Number(candidate.buys5m || 0), sells5m: Number(candidate.sells5m || 0), volume5mUsd: Number(candidate.volume5mUsd || 0) }
     };
     this.state.networkBalances[chainId] = Number(this.state.networkBalances[chainId] ?? 100) - notional;
     this.state.paperBalanceUsd = Object.values(this.state.networkBalances).reduce((sum, value) => sum + Number(value || 0), 0);
