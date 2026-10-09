@@ -153,7 +153,40 @@ class PaperEngine {
         return Array.isArray(data.pairs) ? data.pairs : [];
       }));
       const byAddress = new Map();
-      for (const pair of results.flat()) {
+      // Supplement keyword search with DexScreener's latest token discovery feeds.
+      const fetchFeed = async endpoint => {
+        try {
+          const response = await fetch(`https://api.dexscreener.com/${endpoint}`, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(10000) });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const data = await response.json();
+          return Array.isArray(data) ? data : [];
+        } catch (error) {
+          this.addLog(`Feed ${endpoint} indisponível: ${error.message || "erro"}.`, "warning");
+          return [];
+        }
+      };
+      const [profiles, boosts] = await Promise.all([
+        fetchFeed("token-profiles/latest/v1"),
+        fetchFeed("token-boosts/latest/v1")
+      ]);
+      const seeds = new Map();
+      for (const item of [...profiles, ...boosts]) {
+        const chain = String(item.chainId || "").toLowerCase();
+        const tokenAddress = String(item.tokenAddress || "").trim();
+        if (!SUPPORTED_CHAINS.has(chain) || !tokenAddress) continue;
+        seeds.set(`${chain}:${tokenAddress.toLowerCase()}`, { chain, tokenAddress });
+      }
+      const seedList = [...seeds.values()].slice(0, 12);
+      const freshPairLists = await Promise.all(seedList.map(async token => {
+        try {
+          const response = await fetch(`https://api.dexscreener.com/token-pairs/v1/${encodeURIComponent(token.chain)}/${encodeURIComponent(token.tokenAddress)}`, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(10000) });
+          if (!response.ok) return [];
+          const data = await response.json();
+          return Array.isArray(data) ? data : [];
+        } catch { return []; }
+      }));
+      this.addLog(`Feed de descoberta recente: ${seedList.length} tokens consultados.`, "scan");
+      for (const pair of [...results.flat(), ...freshPairLists.flat()]) {
         if (!SUPPORTED_CHAINS.has(String(pair.chainId || "").toLowerCase()) || !pair.pairAddress) continue;
         byAddress.set(`${String(pair.chainId).toLowerCase()}:${String(pair.pairAddress).toLowerCase()}`, pair);
       }
