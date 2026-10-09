@@ -163,17 +163,25 @@ function evaluatePair(pair, now = Date.now()) {
     if (buys5m / Math.max(sells5m, 1) < minRatio) reasons.push(`Solana: pressão compradora abaixo de ${minRatio}x`);
     if (priceChange5m <= 0) reasons.push("Solana: momentum de 5 min não positivo");
     if (priceChange5m > maxChange5m) reasons.push("Solana: alta de 5 min excessiva; possível compra no topo");
+    if (priceChange15m <= 0) reasons.push("Solana: tendência de 15 min ainda não confirmou a alta");
+    if (priceChange15m > numEnv("SOL_MAX_PRICE_CHANGE_15M_PCT", 12)) reasons.push("Solana: alta de 15 min excessiva; risco de entrada atrasada");
+    if (priceChange1h < numEnv("SOL_MIN_PRICE_CHANGE_1H_PCT", -5)) reasons.push("Solana: tendência de 1 hora muito fraca");
+    if (priceChange1h > numEnv("SOL_MAX_PRICE_CHANGE_1H_PCT", 25)) reasons.push("Solana: alta de 1 hora excessiva; risco de comprar após pump");
     if (volume5m <= 0) reasons.push("Solana: sem volume recente verificável");
+    // Ajuste provisório inspirado nos dois resultados positivos: combinar fluxo comprador
+    // de curto prazo com confirmação de tendência, evitando sinais isolados de 5 minutos.
     entryScore = [
       liquidity >= minLiq * 2, volume5m >= minVol5m * 2,
       buys5m > sells5m * minRatio,
       priceChange5m > 0 && priceChange5m <= maxChange5m / 2,
-      buys5m + sells5m >= minTx5m * 2
+      buys5m + sells5m >= minTx5m * 2,
+      priceChange15m > 0 && priceChange15m <= numEnv("SOL_MAX_PRICE_CHANGE_15M_PCT", 12),
+      priceChange1h >= 0 && priceChange1h <= numEnv("SOL_MAX_PRICE_CHANGE_1H_PCT", 25)
     ].filter(Boolean).length;
   }
 
-  // Shared confirmation pattern based on the profitable sample: recent buy pressure + active volume + controlled momentum.
-  // The screenshot does not contain the winners' historical entry metrics, so this is a testable hypothesis, not a proven causal pattern.
+  // Shared confirmation pattern: recent buy pressure + active volume + controlled momentum.
+  // Sludge/QSB historical entry metrics were not present in the screenshot; Solana's added multi-timeframe filter is provisional and must be validated on paper trades.
   const buySellRatio5m = buys5m / Math.max(sells5m, 1);
   const minCommonBuyRatio = chain === "solana" ? 1.4 : chain === "bsc" ? 1.3 : 1.25;
   const minCommonTxns5m = chain === "solana" ? 15 : chain === "bsc" ? 10 : 8;
