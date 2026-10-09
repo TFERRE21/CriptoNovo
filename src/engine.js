@@ -234,6 +234,11 @@ class PaperEngine {
               position.updatedAt = new Date().toISOString();
               priceUpdated = true;
               const target = numEnv("TAKE_PROFIT_NET_PCT", 5);
+              const stopLoss = numEnv("STOP_LOSS_NET_PCT", 5);
+              if (position.estimatedNetPct <= -stopLoss) {
+                this.closePosition(position, price, "STOP_LOSS_5_PCT");
+                continue;
+              }
               if (position.estimatedNetPct >= target) {
                 this.closePosition(position, price, "ALVO_LIQUIDO");
                 continue;
@@ -277,7 +282,7 @@ class PaperEngine {
       const avg = arr => arr.length ? arr.reduce((sum, t) => sum + Number(t.entryFeatures?.liquidityUsd || 0), 0) / arr.length : 0;
       this.addLog(`EXPERIMENTO FINALIZADO: ${experimentTrades.length} entradas; ${winners.length} positivas e ${losers.length} negativas. Liquidez média vencedoras: ${avg(winners).toFixed(0)}; perdedoras: ${avg(losers).toFixed(0)}.`, 'experiment');
     }
-    this.addLog(`SAÍDA SIMULADA: ${position.tokenSymbol} — ${pnlUsd >= 0 ? '+' : ''}${pnlUsd.toFixed(4)} (${position.estimatedNetPct.toFixed(2)}% líquido estimado). Motivo: ${reason}.`, pnlUsd >= 0 ? 'profit' : 'loss', { tokenSymbol: position.tokenSymbol, chainId, pnlUsd, pct: position.estimatedNetPct });
+    this.addLog(`SAÍDA SIMULADA: ${position.tokenSymbol} — ${pnlUsd >= 0 ? '+' : ''}${pnlUsd.toFixed(4)} (${position.estimatedNetPct.toFixed(2)}% líquido estimado). Motivo: ${reason}.`, pnlUsd >= 0 ? 'profit' : 'loss', { tokenSymbol: position.tokenSymbol, chainId, pnlUsd, pct: position.estimatedNetPct, closeReason: reason });
     this.state.trades = this.state.trades.slice(0, 500);
   }
   async start() {
