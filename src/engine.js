@@ -214,25 +214,45 @@ class PaperEngine {
   }
   async markToMarket() {
     for (const position of this.state.positions.filter(p => p.status === "OPEN")) {
+      const chainId = String(position.chainId || "bsc").toLowerCase();
+      const maxHoldMs = numEnv("MAX_HOLD_MINUTES", 60) * 60000;
+      const expired = Date.now() - new Date(position.openedAt).getTime() >= maxHoldMs;
+      let priceUpdated = false;
       try {
-        const chainId = String(position.chainId || "bsc").toLowerCase();
         const url = `https://api.dexscreener.com/latest/dex/pairs/${encodeURIComponent(chainId)}/${encodeURIComponent(position.pairAddress)}`;
         const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
-        if (!response.ok) continue;
-        const pair = (await response.json()).pairs?.[0];
-        if (!pair) continue;
-        const selected = tokenSide(pair);
-        const price = selected.priceUsd;
-        if (!(price > 0)) continue;
-        position.lastPriceUsd = price;
-        const grossChangePct = (price / position.entryPriceUsd - 1) * 100;
-        const costPct = numEnv("ESTIMATED_ROUNDTRIP_COST_PCT", 1.5);
-        position.estimatedNetPct = grossChangePct - costPct;
-        position.updatedAt = new Date().toISOString();
-        const target = numEnv("TAKE_PROFIT_NET_PCT", 5);
-        const expired = Date.now() - new Date(position.openedAt).getTime() >= numEnv("MAX_HOLD_MINUTES", 60) * 60000;
-        if (position.estimatedNetPct >= target || expired) this.closePosition(position, price, position.estimatedNetPct >= target ? "ALVO_LIQUIDO" : "TEMPO_MAXIMO");
-      } catch { /* keep position open if price provider temporarily fails */ }
+        if (response.ok) {
+          const pair = (await response.json()).pairs?.[0];
+          if (pair) {
+            const selected = tokenSide(pair);
+            const price = selected.priceUsd;
+            if (price > 0) {
+              position.lastPriceUsd = price;
+              const grossChangePct = (price / position.entryPriceUsd - 1) * 100;
+              const costPct = numEnv("ESTIMATED_ROUNDTRIP_COST_PCT", 1.5);
+              position.estimatedNetPct = grossChangePct - costPct;
+              position.updatedAt = new Date().toISOString();
+              priceUpdated = true;
+              const target = numEnv("TAKE_PROFIT_NET_PCT", 5);
+              if (position.estimatedNetPct >= target) {
+                this.closePosition(position, price, "ALVO_LIQUIDO");
+                continue;
+              }
+            }
+          }
+        } else {
+          this.addLog(`Preço indisponível para ${position.tokenSymbol} na rede ${chainId}: HTTP ${response.status}.`, "warning", { tokenSymbol: position.tokenSymbol, chainId });
+        }
+      } catch (error) {
+        this.addLog(`Falha ao atualizar preço de ${position.tokenSymbol} na rede ${chainId}: ${error.message || "erro de consulta"}.`, "warning", { tokenSymbol: position.tokenSymbol, chainId });
+      }
+      if (expired) {
+        const lastPrice = Number(position.lastPriceUsd || position.entryPriceUsd || 0);
+        if (lastPrice > 0) {
+          if (!priceUpdated) this.addLog(`Prazo máximo atingido para ${position.tokenSymbol}; usando o último preço disponível para registrar a saída simulada.`, "warning", { tokenSymbol: position.tokenSymbol, chainId });
+          this.closePosition(position, lastPrice, priceUpdated ? "TEMPO_MAXIMO" : "TEMPO_MAXIMO_PRECO_DESATUALIZADO");
+        }
+      }
     }
   }
   closePosition(position, price, reason) {
