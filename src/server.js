@@ -15,6 +15,12 @@ app.post("/api/stop", async (_req, res) => { await engine.stop(); res.json({ ok:
 app.post("/api/reset", async (_req, res) => { await engine.reset(); res.json({ ok: true, state: engine.snapshot() }); });
 
 const port = Number(process.env.PORT || 3000);
-engine.init().then(() => {
-  app.listen(port, "0.0.0.0", () => console.log(`CriptoNovo paper dashboard listening on :${port}`));
-}).catch(err => { console.error("Failed to initialize:", err); process.exit(1); });
+// Bind HTTP first so the hosting lifecycle sees a healthy process immediately.
+const server = app.listen(port, "0.0.0.0", () => {
+  console.log(`CriptoNovo paper dashboard listening on :${port}`);
+  engine.init().then(() => {
+    console.log("Continuous paper monitor initialized");
+  }).catch(err => {
+    console.error("Failed to initialize monitor:", err);
+  });
+});
