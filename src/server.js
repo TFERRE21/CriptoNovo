@@ -10,6 +10,10 @@ app.use(express.static(path.join(__dirname, "..", "public")));
 
 app.get("/api/health", (_req, res) => res.json({ ok: true, mode: "PAPER", time: new Date().toISOString() }));
 app.get("/api/state", (_req, res) => res.json(engine.snapshot()));
+app.put("/api/settings", async (req, res) => {
+  try { const settings = await engine.updateSettings(req.body); res.json({ ok: true, settings }); }
+  catch (error) { res.status(400).json({ ok: false, error: error.message || "Configurações inválidas." }); }
+});
 app.post("/api/start", async (_req, res) => { await engine.start(); res.json({ ok: true, state: engine.snapshot() }); });
 app.post("/api/stop", async (_req, res) => { await engine.stop(); res.json({ ok: true, state: engine.snapshot() }); });
 app.post("/api/reset", async (_req, res) => { await engine.reset(); res.json({ ok: true, state: engine.snapshot() }); });
