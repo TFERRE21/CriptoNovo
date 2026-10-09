@@ -4,6 +4,7 @@ const path = require("node:path");
 const DATA_DIR = path.join(__dirname, "..", "data");
 const STATE_FILE = path.join(DATA_DIR, "state.json");
 const WBNB = "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c";
+const SUPPORTED_CHAINS = new Set(["bsc", "ethereum", "solana", "base", "arbitrum", "optimism", "polygon", "avalanche"]);
 
 const defaultState = () => ({
   running: false, startedAt: null, lastPollAt: null, lastError: null, pairsAnalyzed: 0, activityLogs: [], experiment: { targetEntries: 10, entriesOpened: 0, completed: false, startedAt: null },
@@ -55,7 +56,7 @@ function evaluatePair(pair, now = Date.now()) {
   const maxAge = numEnv("MAX_PAIR_AGE_HOURS", 24);
   const reasons = [];
   if (!pair?.pairAddress || !pair?.baseToken?.address || !pair?.quoteToken?.address) reasons.push("Dados incompletos");
-  if (String(pair?.chainId || "").toLowerCase() !== "bsc") reasons.push("Rede diferente de BNB Chain");
+  if (!SUPPORTED_CHAINS.has(String(pair?.chainId || "").toLowerCase())) reasons.push("Rede não habilitada");
   if (liquidity < minLiquidity) reasons.push(`Liquidez abaixo do mínimo (US${minLiquidity})`);
   if (volume24h < minVolume24h) reasons.push(`Volume 24h abaixo de US${minVolume24h}`);
   if (txns1h < minTxns1h) reasons.push(`Poucas transações na última hora (${txns1h}/${minTxns1h})`);
@@ -98,7 +99,7 @@ class PaperEngine {
     this.polling = true;
     try {
       // Search endpoint is approximate. Query several terms each cycle instead of repeatedly seeing only the same WBNB results.
-      const queries = ["WBNB", "BNB", "PancakeSwap", "BSC"];
+      const queries = ["WBNB", "BNB", "PancakeSwap", "BSC", "WETH", "ETH", "Uniswap", "Ethereum", "SOL", "Raydium", "Solana", "Base", "Aerodrome", "Arbitrum", "Optimism", "Polygon", "Avalanche"];
       const results = await Promise.all(queries.map(async q => {
         const response = await fetch(`https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(q)}`, {
           headers: { accept: "application/json" }, signal: AbortSignal.timeout(12000)
@@ -109,7 +110,7 @@ class PaperEngine {
       }));
       const byAddress = new Map();
       for (const pair of results.flat()) {
-        if (String(pair.chainId || "").toLowerCase() !== "bsc" || !pair.pairAddress) continue;
+        if (!SUPPORTED_CHAINS.has(String(pair.chainId || "").toLowerCase()) || !pair.pairAddress) continue;
         byAddress.set(String(pair.pairAddress).toLowerCase(), pair);
       }
       const pairs = [...byAddress.values()]
@@ -125,7 +126,7 @@ class PaperEngine {
         if (!address) continue;
         const result = evaluatePair(pair, now);
         const candidate = {
-          id: address, pairAddress: pair.pairAddress,
+          id: address, chainId: String(pair.chainId || "bsc").toLowerCase(), pairAddress: pair.pairAddress,
           tokenAddress: result.token?.address || "",
           tokenName: result.token?.name || "Desconhecido",
           tokenSymbol: result.token?.symbol || "?",
@@ -187,7 +188,7 @@ class PaperEngine {
     if (this.state.trades.some(t => String(t.pairAddress || "").toLowerCase() === String(candidate.pairAddress || "").toLowerCase())) return;
     if (!(candidate.priceUsd > 0)) return;
     const position = {
-      id: candidate.id, pairAddress: candidate.pairAddress, tokenAddress: candidate.tokenAddress,
+      id: candidate.id, chainId: candidate.chainId || "bsc", pairAddress: candidate.pairAddress, tokenAddress: candidate.tokenAddress,
       tokenName: candidate.tokenName, tokenSymbol: candidate.tokenSymbol, url: candidate.url,
       notionalUsd: notional, entryPriceUsd: candidate.priceUsd, lastPriceUsd: candidate.priceUsd,
       estimatedNetPct: -numEnv("ESTIMATED_ROUNDTRIP_COST_PCT", 1.5),
@@ -205,7 +206,8 @@ class PaperEngine {
   async markToMarket() {
     for (const position of this.state.positions.filter(p => p.status === "OPEN")) {
       try {
-        const url = `https://api.dexscreener.com/latest/dex/pairs/bsc/${encodeURIComponent(position.pairAddress)}`;
+        const chainId = String(position.chainId || "bsc").toLowerCase();
+        const url = `https://api.dexscreener.com/latest/dex/pairs/${encodeURIComponent(chainId)}/${encodeURIComponent(position.pairAddress)}`;
         const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
         if (!response.ok) continue;
         const pair = (await response.json()).pairs?.[0];
