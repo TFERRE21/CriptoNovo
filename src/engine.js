@@ -15,7 +15,7 @@ const defaultSettings = () => Object.fromEntries(CHAIN_IDS.map(chain => [chain, 
 }]));
 
 const defaultState = () => ({
-  running: false, startedAt: null, lastPollAt: null, lastError: null, pairsAnalyzed: 0, activityLogs: [], experiment: { targetEntries: 30, entriesOpened: 0, completed: false, startedAt: null },
+  running: false, startedAt: null, lastPollAt: null, lastError: null, pairsAnalyzed: 0, activityLogs: [], experiment: { targetEntries: 60, entriesOpened: 0, completed: false, startedAt: null },
   paperBalanceUsd: Number(process.env.PAPER_BALANCE_USD || 100) * CHAIN_IDS.length,
   initialBalanceUsd: Number(process.env.PAPER_BALANCE_USD || 100) * CHAIN_IDS.length,
   networkBalances: chainBalances(Number(process.env.PAPER_BALANCE_USD || 100)),
@@ -80,10 +80,10 @@ function evaluatePair(pair, now = Date.now()) {
   const priceChange15m = Number(pair?.priceChange?.m15 || 0);
   const priceChange1h = Number(pair?.priceChange?.h1 || 0);
   const volume5m = Number(pair?.volume?.m5 || 0);
-  const minLiquidity = numEnv("MIN_LIQUIDITY_USD", 3500);
-  const minVolume24h = numEnv("MIN_VOLUME_24H_USD", 20000);
-  const minTxns1h = numEnv("MIN_TXNS_1H", 10);
-  const minBuyRatio = numEnv("MIN_BUY_SELL_RATIO", 1.05);
+  const minLiquidity = numEnv("MIN_LIQUIDITY_USD", 1500);
+  const minVolume24h = numEnv("MIN_VOLUME_24H_USD", 5000);
+  const minTxns1h = numEnv("MIN_TXNS_1H", 5);
+  const minBuyRatio = numEnv("MIN_BUY_SELL_RATIO", 0.9);
   const isFreshPair = Number.isFinite(ageHours) && ageHours >= 0 && ageHours <= numEnv("FRESH_PAIR_MAX_AGE_HOURS", 6);
   const reasons = [];
 
@@ -94,9 +94,9 @@ function evaluatePair(pair, now = Date.now()) {
   let strategy = "ETH_TREND";
   if (chain === "ethereum") {
     // Keep Ethereum's existing strategy unchanged: it was the best performer in the user's sample.
-    const minFreshLiquidity = numEnv("MIN_FRESH_LIQUIDITY_USD", 2000);
-    const minFreshVolume5m = numEnv("MIN_FRESH_VOLUME_5M_USD", 800);
-    const minFreshTxns5m = numEnv("MIN_FRESH_TXNS_5M", 5);
+    const minFreshLiquidity = numEnv("MIN_FRESH_LIQUIDITY_USD", 1000);
+    const minFreshVolume5m = numEnv("MIN_FRESH_VOLUME_5M_USD", 200);
+    const minFreshTxns5m = numEnv("MIN_FRESH_TXNS_5M", 2);
     const maxAge = numEnv("MAX_PAIR_AGE_HOURS", 720);
     const minAge = numEnv("MIN_PAIR_AGE_MINUTES", 0);
     if (liquidity < (isFreshPair ? minFreshLiquidity : minLiquidity)) reasons.push(`Liquidez abaixo do mínimo (${isFreshPair ? minFreshLiquidity : minLiquidity} USD)`);
@@ -134,11 +134,11 @@ function evaluatePair(pair, now = Date.now()) {
     strategy = "BSC_EARLY_MOMENTUM";
     const minAgeMinutes = numEnv("BSC_MIN_AGE_MINUTES", 1);
     const maxAgeHours = numEnv("BSC_MAX_AGE_HOURS", 12);
-    const minLiq = numEnv("BSC_MIN_LIQUIDITY_USD", 1500);
-    const minVol5m = numEnv("BSC_MIN_VOLUME_5M_USD", 400);
-    const minTx5m = numEnv("BSC_MIN_TXNS_5M", 3);
-    const minRatio = numEnv("BSC_MIN_BUY_SELL_RATIO_5M", 1.05);
-    const maxChange5m = numEnv("BSC_MAX_PRICE_CHANGE_5M_PCT", 15);
+    const minLiq = numEnv("BSC_MIN_LIQUIDITY_USD", 700);
+    const minVol5m = numEnv("BSC_MIN_VOLUME_5M_USD", 150);
+    const minTx5m = numEnv("BSC_MIN_TXNS_5M", 2);
+    const minRatio = numEnv("BSC_MIN_BUY_SELL_RATIO_5M", 0.9);
+    const maxChange5m = numEnv("BSC_MAX_PRICE_CHANGE_5M_PCT", 25);
     if (!Number.isFinite(ageHours) || ageHours * 60 < minAgeMinutes || ageHours > maxAgeHours) reasons.push("BNB: par fora da janela inicial de lançamento");
     if (liquidity < minLiq) reasons.push(`BNB: liquidez abaixo de US$${minLiq}`);
     if (volume5m < minVol5m) reasons.push(`BNB: volume de 5 min abaixo de US$${minVol5m}`);
@@ -156,13 +156,13 @@ function evaluatePair(pair, now = Date.now()) {
   } else if (chain === "solana") {
     // Solana: faster meme-token flow, requiring more liquidity and stronger short-term demand.
     strategy = "SOLANA_FAST_FLOW";
-    const minAgeMinutes = numEnv("SOL_MIN_AGE_MINUTES", 1);
+    const minAgeMinutes = numEnv("SOL_MIN_AGE_MINUTES", 0);
     const maxAgeHours = numEnv("SOL_MAX_AGE_HOURS", 24);
-    const minLiq = numEnv("SOL_MIN_LIQUIDITY_USD", 2500);
-    const minVol5m = numEnv("SOL_MIN_VOLUME_5M_USD", 700);
-    const minTx5m = numEnv("SOL_MIN_TXNS_5M", 5);
-    const minRatio = numEnv("SOL_MIN_BUY_SELL_RATIO_5M", 1.05);
-    const maxChange5m = numEnv("SOL_MAX_PRICE_CHANGE_5M_PCT", 10);
+    const minLiq = numEnv("SOL_MIN_LIQUIDITY_USD", 1000);
+    const minVol5m = numEnv("SOL_MIN_VOLUME_5M_USD", 250);
+    const minTx5m = numEnv("SOL_MIN_TXNS_5M", 2);
+    const minRatio = numEnv("SOL_MIN_BUY_SELL_RATIO_5M", 0.9);
+    const maxChange5m = numEnv("SOL_MAX_PRICE_CHANGE_5M_PCT", 20);
     if (!Number.isFinite(ageHours) || ageHours * 60 < minAgeMinutes || ageHours > maxAgeHours) reasons.push("Solana: par fora da janela inicial de lançamento");
     if (liquidity < minLiq) reasons.push(`Solana: liquidez abaixo de US$${minLiq}`);
     if (volume5m < minVol5m) reasons.push(`Solana: volume de 5 min abaixo de US$${minVol5m}`);
@@ -170,7 +170,7 @@ function evaluatePair(pair, now = Date.now()) {
     if (buys5m / Math.max(sells5m, 1) < minRatio) reasons.push(`Solana: pressão compradora abaixo de ${minRatio}x`);
     if (priceChange5m <= 0) reasons.push("Solana: momentum de 5 min não positivo");
     if (priceChange5m > maxChange5m) reasons.push("Solana: alta de 5 min excessiva; possível compra no topo");
-    if (priceChange15m <= 0) reasons.push("Solana: tendência de 15 min ainda não confirmou a alta");
+    if (priceChange15m < -3) reasons.push("Solana: tendência de 15 min muito fraca");
     if (priceChange15m > numEnv("SOL_MAX_PRICE_CHANGE_15M_PCT", 12)) reasons.push("Solana: alta de 15 min excessiva; risco de entrada atrasada");
     if (priceChange1h < numEnv("SOL_MIN_PRICE_CHANGE_1H_PCT", -5)) reasons.push("Solana: tendência de 1 hora muito fraca");
     if (priceChange1h > numEnv("SOL_MAX_PRICE_CHANGE_1H_PCT", 25)) reasons.push("Solana: alta de 1 hora excessiva; risco de comprar após pump");
@@ -190,14 +190,14 @@ function evaluatePair(pair, now = Date.now()) {
   // Shared confirmation pattern: recent buy pressure + active volume + controlled momentum.
   // Sludge/QSB historical entry metrics were not present in the screenshot; Solana's added multi-timeframe filter is provisional and must be validated on paper trades.
   const buySellRatio5m = buys5m / Math.max(sells5m, 1);
-  const minCommonBuyRatio = chain === "solana" || chain === "bsc" ? 1.05 : 1.05;
-  const minCommonTxns5m = chain === "solana" ? 5 : chain === "bsc" ? 3 : 5;
+  const minCommonBuyRatio = 0.9;
+  const minCommonTxns5m = 2;
   if (buys5m + sells5m < minCommonTxns5m) reasons.push(`Confirmação comum: menos de ${minCommonTxns5m} transações em 5 min`);
   if (buySellRatio5m < minCommonBuyRatio) reasons.push(`Confirmação comum: relação compras/vendas em 5 min abaixo de ${minCommonBuyRatio}x`);
   if (buys5m <= sells5m) reasons.push("Confirmação comum: vendas iguais ou superiores às compras nos últimos 5 min");
   if (priceChange5m <= 0) reasons.push("Confirmação comum: preço sem impulso positivo em 5 min");
   if (volume5m <= 0) reasons.push("Confirmação comum: sem volume recente");
-  if (entryScore < (chain === "solana" || chain === "bsc" ? 2 : 3)) reasons.push(`Qualidade de entrada insuficiente (score ${entryScore}; mínimo ${chain === "solana" || chain === "bsc" ? 2 : 3})`);
+  if (entryScore < 2) reasons.push(`Qualidade de entrada insuficiente (score ${entryScore}; mínimo 2)`);
 
   const selected = tokenSide(pair);
   if (!selected.token?.address || !(selected.priceUsd > 0)) reasons.push("Preço ou token negociável indisponível");
@@ -345,17 +345,17 @@ class PaperEngine {
     }
   }
   openPaperPosition(candidate) {
-    this.state.experiment = { targetEntries: 30, entriesOpened: 0, completed: false, startedAt: null, ...(this.state.experiment || {}) };
-    const maxOpen = numEnv("MAX_OPEN_POSITIONS", 3);
+    this.state.experiment = { targetEntries: 60, entriesOpened: 0, completed: false, startedAt: null, ...(this.state.experiment || {}) };
+    const maxOpen = numEnv("MAX_OPEN_POSITIONS", 6);
     const totalEntries = Number(this.state.experiment.entriesOpened || 0);
     const chainId = String(candidate.chainId || "bsc").toLowerCase();
     const chainEntries = [...this.state.positions, ...this.state.trades].filter(p => String(p.chainId || "bsc").toLowerCase() === chainId && Number(p.experimentEntryNumber) > 0).length;
-    if (chainEntries >= 10 || totalEntries >= 30 || this.state.experiment.completed) return;
+    if (chainEntries >= 20 || totalEntries >= 60 || this.state.experiment.completed) return;
     const networkSettings = this.state.settings?.[chainId] || defaultSettings()[chainId];
     const notional = Number(networkSettings.entryUsd || 10);
     const open = this.state.positions.filter(p => p.status === "OPEN");
     this.state.networkBalances = this.state.networkBalances || chainBalances(Number(process.env.PAPER_BALANCE_USD || 100));
-    if (open.length >= maxOpen || open.filter(p => String(p.chainId || "bsc").toLowerCase() === chainId).length >= 2 || Number(this.state.networkBalances[chainId] ?? 100) < notional) return;
+    if (open.length >= maxOpen || open.filter(p => String(p.chainId || "bsc").toLowerCase() === chainId).length >= 3 || Number(this.state.networkBalances[chainId] ?? 100) < notional) return;
     if (open.some(p => String(p.chainId || "bsc").toLowerCase() === chainId && String(p.pairAddress || "").toLowerCase() === String(candidate.pairAddress || "").toLowerCase())) return;
     if (this.state.trades.some(t => String(t.chainId || "bsc").toLowerCase() === chainId && String(t.pairAddress || "").toLowerCase() === String(candidate.pairAddress || "").toLowerCase())) return;
     if (!(candidate.priceUsd > 0)) return;
