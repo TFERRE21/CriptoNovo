@@ -6,7 +6,7 @@ const STATE_FILE = path.join(DATA_DIR, "state.json");
 const WBNB = "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c";
 
 const defaultState = () => ({
-  running: false, startedAt: null, lastPollAt: null, lastError: null, pairsAnalyzed: 0,
+  running: false, startedAt: null, lastPollAt: null, lastError: null, pairsAnalyzed: 0, activityLogs: [],
   paperBalanceUsd: Number(process.env.PAPER_BALANCE_USD || 100),
   initialBalanceUsd: Number(process.env.PAPER_BALANCE_USD || 100),
   candidates: [], positions: [], trades: [], seenPairAddresses: []
@@ -78,6 +78,12 @@ class PaperEngine {
     });
     return this.state;
   }
+  addLog(message, type = "info", details = {}) {
+    if (!this.state) return;
+    this.state.activityLogs = Array.isArray(this.state.activityLogs) ? this.state.activityLogs : [];
+    this.state.activityLogs.unshift({ at: new Date().toISOString(), type, message, ...details });
+    this.state.activityLogs = this.state.activityLogs.slice(0, 150);
+  }
   async poll() {
     if (this.polling) return;
     this.polling = true;
@@ -103,6 +109,7 @@ class PaperEngine {
       const seen = new Set(this.state.seenPairAddresses);
       const now = Date.now();
       this.state.pairsAnalyzed = Number(this.state.pairsAnalyzed || 0) + pairs.length;
+      this.addLog(`Consulta concluída: ${pairs.length} pares BNB Chain analisados; ${byAddress.size} pares únicos nesta rodada.`, 'scan');
       const candidatesById = new Map(this.state.candidates.map(item => [String(item.id).toLowerCase(), item]));
       for (const pair of pairs) {
         const address = String(pair.pairAddress || "").toLowerCase();
@@ -124,6 +131,8 @@ class PaperEngine {
         if (isNew) {
           this.state.candidates.unshift(candidate);
           seen.add(address);
+          if (result.approved) this.addLog(`Novo par aprovado: ${candidate.tokenSymbol} — liquidez ${candidate.liquidityUsd.toFixed(2)} USD.`, 'approved', { tokenSymbol: candidate.tokenSymbol, pairAddress: candidate.pairAddress });
+          else if (this.state.candidates.length < 20) this.addLog(`Par bloqueado: ${candidate.tokenSymbol} — ${result.reasons.join('; ')}.`, 'blocked', { tokenSymbol: candidate.tokenSymbol });
           if (this.state.running && result.approved) this.openPaperPosition(candidate);
         } else {
           const existing = candidatesById.get(address);
@@ -137,6 +146,7 @@ class PaperEngine {
       this.state.lastError = null;
     } catch (error) {
       this.state.lastError = error.message || "Erro desconhecido";
+      this.addLog(`Erro na consulta: ${this.state.lastError}`, "error");
     } finally {
       this.polling = false;
       await saveState(this.state);
@@ -159,6 +169,7 @@ class PaperEngine {
     };
     this.state.paperBalanceUsd -= notional;
     this.state.positions.unshift(position);
+    this.addLog(`ENTRADA SIMULADA: ${candidate.tokenSymbol} a ${candidate.priceUsd}; ordem virtual ${notional}.`, 'entry', { tokenSymbol: candidate.tokenSymbol, pct: position.estimatedNetPct });
   }
   async markToMarket() {
     for (const position of this.state.positions.filter(p => p.status === "OPEN")) {
@@ -193,16 +204,19 @@ class PaperEngine {
     position.pnlUsd = Number(pnlUsd.toFixed(6));
     this.state.paperBalanceUsd += position.notionalUsd + pnlUsd;
     this.state.trades.unshift({ ...position });
+    this.addLog(`SAÍDA SIMULADA: ${position.tokenSymbol} — ${pnlUsd >= 0 ? '+' : ''}${pnlUsd.toFixed(4)} (${position.estimatedNetPct.toFixed(2)}% líquido estimado). Motivo: ${reason}.`, pnlUsd >= 0 ? 'profit' : 'loss', { tokenSymbol: position.tokenSymbol, pnlUsd, pct: position.estimatedNetPct });
     this.state.trades = this.state.trades.slice(0, 500);
   }
   async start() {
-    if (this.state.running) return;
+    if (this.state.running) { this.addLog('Comando iniciar recebido: monitor já estava ativo.', 'info'); await saveState(this.state); return; }
+    this.addLog('Monitor de simulação iniciado manualmente.', 'info');
     this.state.running = true; this.state.startedAt = new Date().toISOString();
     await this.poll();
     this.timer = setInterval(() => this.poll(), Math.max(15000, numEnv("POLL_INTERVAL_MS", 30000)));
     await saveState(this.state);
   }
   async stop() {
+    this.addLog('Monitor de simulação parado pelo usuário.', 'warning');
     this.state.running = false;
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
