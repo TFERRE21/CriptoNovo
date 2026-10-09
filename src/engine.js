@@ -80,10 +80,10 @@ function evaluatePair(pair, now = Date.now()) {
   const priceChange15m = Number(pair?.priceChange?.m15 || 0);
   const priceChange1h = Number(pair?.priceChange?.h1 || 0);
   const volume5m = Number(pair?.volume?.m5 || 0);
-  const minLiquidity = numEnv("MIN_LIQUIDITY_USD", 5000);
-  const minVolume24h = numEnv("MIN_VOLUME_24H_USD", 50000);
-  const minTxns1h = numEnv("MIN_TXNS_1H", 20);
-  const minBuyRatio = numEnv("MIN_BUY_SELL_RATIO", 1.15);
+  const minLiquidity = numEnv("MIN_LIQUIDITY_USD", 3500);
+  const minVolume24h = numEnv("MIN_VOLUME_24H_USD", 20000);
+  const minTxns1h = numEnv("MIN_TXNS_1H", 10);
+  const minBuyRatio = numEnv("MIN_BUY_SELL_RATIO", 1.05);
   const isFreshPair = Number.isFinite(ageHours) && ageHours >= 0 && ageHours <= numEnv("FRESH_PAIR_MAX_AGE_HOURS", 6);
   const reasons = [];
 
@@ -94,9 +94,9 @@ function evaluatePair(pair, now = Date.now()) {
   let strategy = "ETH_TREND";
   if (chain === "ethereum") {
     // Keep Ethereum's existing strategy unchanged: it was the best performer in the user's sample.
-    const minFreshLiquidity = numEnv("MIN_FRESH_LIQUIDITY_USD", 3000);
-    const minFreshVolume5m = numEnv("MIN_FRESH_VOLUME_5M_USD", 1500);
-    const minFreshTxns5m = numEnv("MIN_FRESH_TXNS_5M", 8);
+    const minFreshLiquidity = numEnv("MIN_FRESH_LIQUIDITY_USD", 2000);
+    const minFreshVolume5m = numEnv("MIN_FRESH_VOLUME_5M_USD", 800);
+    const minFreshTxns5m = numEnv("MIN_FRESH_TXNS_5M", 5);
     const maxAge = numEnv("MAX_PAIR_AGE_HOURS", 720);
     const minAge = numEnv("MIN_PAIR_AGE_MINUTES", 0);
     if (liquidity < (isFreshPair ? minFreshLiquidity : minLiquidity)) reasons.push(`Liquidez abaixo do mínimo (${isFreshPair ? minFreshLiquidity : minLiquidity} USD)`);
@@ -111,13 +111,13 @@ function evaluatePair(pair, now = Date.now()) {
       if (txns1h < minTxns1h) reasons.push(`Poucas transações na última hora (${txns1h}/${minTxns1h})`);
       if (txns1h >= minTxns1h && buys1h < sells1h) reasons.push("Pressão vendedora na última hora");
       if (txns1h > 0 && buys1h / Math.max(sells1h, 1) < minBuyRatio) reasons.push(`Compras sem força suficiente (relação ${(buys1h / Math.max(sells1h, 1)).toFixed(2)}x)`);
-      if (priceChange15m < numEnv("MIN_PRICE_CHANGE_15M_PCT", 0.3)) reasons.push("Tendência de 15 minutos fraca");
-      if (priceChange1h < numEnv("MIN_PRICE_CHANGE_1H_PCT", 0.5)) reasons.push("Tendência de 1 hora insuficiente");
+      if (priceChange15m < numEnv("MIN_PRICE_CHANGE_15M_PCT", 0)) reasons.push("Tendência de 15 minutos fraca");
+      if (priceChange1h < numEnv("MIN_PRICE_CHANGE_1H_PCT", 0)) reasons.push("Tendência de 1 hora insuficiente");
       if (priceChange1h > numEnv("MAX_PRICE_CHANGE_1H_PCT", 15)) reasons.push("Alta excessiva em 1 hora");
     }
     if (!Number.isFinite(ageHours) || ageHours < minAge / 60 || ageHours > maxAge) reasons.push("Idade do par ausente ou fora do limite");
-    if (!isFreshPair && priceChange5m > numEnv("MAX_PRICE_CHANGE_5M_PCT", 4)) reasons.push("Alta muito acelerada em 5 minutos; risco de comprar no topo");
-    if (!isFreshPair && priceChange15m > numEnv("MAX_PRICE_CHANGE_15M_PCT", 8)) reasons.push("Alta excessiva em 15 minutos");
+    if (!isFreshPair && priceChange5m > numEnv("MAX_PRICE_CHANGE_5M_PCT", 6)) reasons.push("Alta muito acelerada em 5 minutos; risco de comprar no topo");
+    if (!isFreshPair && priceChange15m > numEnv("MAX_PRICE_CHANGE_15M_PCT", 10)) reasons.push("Alta excessiva em 15 minutos");
     if (buys5m + sells5m < (isFreshPair ? minFreshTxns5m : numEnv("MIN_TXNS_5M", 3))) reasons.push("Pouca confirmação de negociação nos últimos 5 minutos");
     if (volume5m <= 0) reasons.push("Sem volume recente confirmado");
     entryScore = [
@@ -132,13 +132,13 @@ function evaluatePair(pair, now = Date.now()) {
   } else if (chain === "bsc") {
     // BNB Chain: early launch momentum, but avoid the first chaotic seconds and extreme candles.
     strategy = "BSC_EARLY_MOMENTUM";
-    const minAgeMinutes = numEnv("BSC_MIN_AGE_MINUTES", 2);
-    const maxAgeHours = numEnv("BSC_MAX_AGE_HOURS", 6);
-    const minLiq = numEnv("BSC_MIN_LIQUIDITY_USD", 2500);
-    const minVol5m = numEnv("BSC_MIN_VOLUME_5M_USD", 800);
-    const minTx5m = numEnv("BSC_MIN_TXNS_5M", 5);
-    const minRatio = numEnv("BSC_MIN_BUY_SELL_RATIO_5M", 1.1);
-    const maxChange5m = numEnv("BSC_MAX_PRICE_CHANGE_5M_PCT", 12);
+    const minAgeMinutes = numEnv("BSC_MIN_AGE_MINUTES", 1);
+    const maxAgeHours = numEnv("BSC_MAX_AGE_HOURS", 12);
+    const minLiq = numEnv("BSC_MIN_LIQUIDITY_USD", 1500);
+    const minVol5m = numEnv("BSC_MIN_VOLUME_5M_USD", 400);
+    const minTx5m = numEnv("BSC_MIN_TXNS_5M", 3);
+    const minRatio = numEnv("BSC_MIN_BUY_SELL_RATIO_5M", 1.05);
+    const maxChange5m = numEnv("BSC_MAX_PRICE_CHANGE_5M_PCT", 15);
     if (!Number.isFinite(ageHours) || ageHours * 60 < minAgeMinutes || ageHours > maxAgeHours) reasons.push("BNB: par fora da janela inicial de lançamento");
     if (liquidity < minLiq) reasons.push(`BNB: liquidez abaixo de US$${minLiq}`);
     if (volume5m < minVol5m) reasons.push(`BNB: volume de 5 min abaixo de US$${minVol5m}`);
@@ -157,12 +157,12 @@ function evaluatePair(pair, now = Date.now()) {
     // Solana: faster meme-token flow, requiring more liquidity and stronger short-term demand.
     strategy = "SOLANA_FAST_FLOW";
     const minAgeMinutes = numEnv("SOL_MIN_AGE_MINUTES", 1);
-    const maxAgeHours = numEnv("SOL_MAX_AGE_HOURS", 12);
-    const minLiq = numEnv("SOL_MIN_LIQUIDITY_USD", 4000);
-    const minVol5m = numEnv("SOL_MIN_VOLUME_5M_USD", 1500);
-    const minTx5m = numEnv("SOL_MIN_TXNS_5M", 8);
-    const minRatio = numEnv("SOL_MIN_BUY_SELL_RATIO_5M", 1.15);
-    const maxChange5m = numEnv("SOL_MAX_PRICE_CHANGE_5M_PCT", 9);
+    const maxAgeHours = numEnv("SOL_MAX_AGE_HOURS", 24);
+    const minLiq = numEnv("SOL_MIN_LIQUIDITY_USD", 2500);
+    const minVol5m = numEnv("SOL_MIN_VOLUME_5M_USD", 700);
+    const minTx5m = numEnv("SOL_MIN_TXNS_5M", 5);
+    const minRatio = numEnv("SOL_MIN_BUY_SELL_RATIO_5M", 1.05);
+    const maxChange5m = numEnv("SOL_MAX_PRICE_CHANGE_5M_PCT", 10);
     if (!Number.isFinite(ageHours) || ageHours * 60 < minAgeMinutes || ageHours > maxAgeHours) reasons.push("Solana: par fora da janela inicial de lançamento");
     if (liquidity < minLiq) reasons.push(`Solana: liquidez abaixo de US$${minLiq}`);
     if (volume5m < minVol5m) reasons.push(`Solana: volume de 5 min abaixo de US$${minVol5m}`);
@@ -190,8 +190,8 @@ function evaluatePair(pair, now = Date.now()) {
   // Shared confirmation pattern: recent buy pressure + active volume + controlled momentum.
   // Sludge/QSB historical entry metrics were not present in the screenshot; Solana's added multi-timeframe filter is provisional and must be validated on paper trades.
   const buySellRatio5m = buys5m / Math.max(sells5m, 1);
-  const minCommonBuyRatio = chain === "solana" ? 1.15 : chain === "bsc" ? 1.1 : 1.2;
-  const minCommonTxns5m = chain === "solana" ? 8 : chain === "bsc" ? 5 : 8;
+  const minCommonBuyRatio = chain === "solana" || chain === "bsc" ? 1.05 : 1.05;
+  const minCommonTxns5m = chain === "solana" ? 5 : chain === "bsc" ? 3 : 5;
   if (buys5m + sells5m < minCommonTxns5m) reasons.push(`Confirmação comum: menos de ${minCommonTxns5m} transações em 5 min`);
   if (buySellRatio5m < minCommonBuyRatio) reasons.push(`Confirmação comum: relação compras/vendas em 5 min abaixo de ${minCommonBuyRatio}x`);
   if (buys5m <= sells5m) reasons.push("Confirmação comum: vendas iguais ou superiores às compras nos últimos 5 min");
