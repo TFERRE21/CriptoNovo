@@ -180,7 +180,7 @@ class PaperEngine {
     }
   }
   openPaperPosition(candidate) {
-    this.state.experiment = { targetEntries: 10, entriesOpened: 0, completed: false, startedAt: null, ...(this.state.experiment || {}) };
+    this.state.experiment = { targetEntries: 80, entriesOpened: 0, completed: false, startedAt: null, ...(this.state.experiment || {}) };
     const maxOpen = 10;
     const totalEntries = Number(this.state.experiment.entriesOpened || 0);
     const chainId = String(candidate.chainId || "bsc").toLowerCase();
