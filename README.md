@@ -25,3 +25,10 @@ As variáveis ficam em `.env.example`: capital simulado, tamanho de posição, l
 - Integração GoPlus/Honeypot para sinais de risco, com tratamento explícito de falhas.
 - Persistência robusta (PostgreSQL), autenticação e monitoramento do processo.
 - Simulação de slippage por profundidade do pool e testes comparativos de execução.
+
+
+## Teste de atualização automática
+
+Marcador de teste: `DEPLOY-WEBHOOK-TEST-2026-10-09`.
+
+Este texto foi atualizado para verificar se um `push` na branch `main` aciona o webhook do painel de hospedagem. Após o commit, confira os logs do container e confirme que o deploy foi iniciado. A indicação de webhook ativo, por si só, não comprova que a imagem foi reconstruída e o container reiniciado.
