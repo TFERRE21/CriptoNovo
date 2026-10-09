@@ -126,10 +126,12 @@ class PaperEngine {
       const candidatesById = new Map(this.state.candidates.map(item => [String(item.id).toLowerCase(), item]));
       for (const pair of pairs) {
         const address = String(pair.pairAddress || "").toLowerCase();
+        const chainId = String(pair.chainId || "bsc").toLowerCase();
+        const pairKey = `${chainId}:${address}`;
         if (!address) continue;
         const result = evaluatePair(pair, now);
         const candidate = {
-          id: address, chainId: String(pair.chainId || "bsc").toLowerCase(), pairAddress: pair.pairAddress,
+          id: pairKey, chainId, pairAddress: pair.pairAddress,
           tokenAddress: result.token?.address || "",
           tokenName: result.token?.name || "Desconhecido",
           tokenSymbol: result.token?.symbol || "?",
@@ -140,15 +142,15 @@ class PaperEngine {
           detectedAt: candidatesById.get(address)?.detectedAt || new Date(now).toISOString(),
           lastSeenAt: new Date(now).toISOString()
         };
-        const isNew = !seen.has(address);
+        const isNew = !seen.has(pairKey);
         if (isNew) {
           this.state.candidates.unshift(candidate);
-          seen.add(address);
+          seen.add(pairKey);
           if (result.approved) this.addLog(`Novo par aprovado (${candidate.chainId}): ${candidate.tokenSymbol} — liquidez ${candidate.liquidityUsd.toFixed(2)} USD.`, 'approved', { tokenSymbol: candidate.tokenSymbol, chainId: candidate.chainId, pairAddress: candidate.pairAddress });
           else if (this.state.candidates.length < 20) this.addLog(`Par bloqueado (${candidate.chainId}): ${candidate.tokenSymbol} — ${result.reasons.join('; ')}.`, 'blocked', { tokenSymbol: candidate.tokenSymbol, chainId: candidate.chainId });
           if (this.state.running && result.approved) this.openPaperPosition(candidate);
         } else {
-          const existing = candidatesById.get(address);
+          const existing = candidatesById.get(pairKey);
           if (existing) Object.assign(existing, candidate);
         }
       }
@@ -157,12 +159,12 @@ class PaperEngine {
       // Fill the ten-entry experiment from already discovered approved pairs too.
       if (this.state.running) {
         const alreadyUsed = new Set([
-          ...this.state.positions.map(p => String(p.pairAddress || "").toLowerCase()),
-          ...this.state.trades.map(t => String(t.pairAddress || "").toLowerCase())
+          ...this.state.positions.map(p => `${String(p.chainId || "bsc").toLowerCase()}:${String(p.pairAddress || "").toLowerCase()}`),
+          ...this.state.trades.map(t => `${String(t.chainId || "bsc").toLowerCase()}:${String(t.pairAddress || "").toLowerCase()}`)
         ]);
         for (const candidate of this.state.candidates) {
           if (Number(this.state.experiment?.entriesOpened || 0) >= 80) break;
-          const id = String(candidate.pairAddress || "").toLowerCase();
+          const id = `${String(candidate.chainId || "bsc").toLowerCase()}:${String(candidate.pairAddress || "").toLowerCase()}`;
           if (!candidate.approved || !id || alreadyUsed.has(id) || !(Number(candidate.priceUsd) > 0)) continue;
           this.openPaperPosition(candidate);
           alreadyUsed.add(id);
@@ -190,8 +192,8 @@ class PaperEngine {
     const open = this.state.positions.filter(p => p.status === "OPEN");
     this.state.networkBalances = this.state.networkBalances || chainBalances(Number(process.env.PAPER_BALANCE_USD || 100));
     if (open.length >= maxOpen || Number(this.state.networkBalances[chainId] ?? 100) < notional) return;
-    if (open.some(p => p.pairAddress.toLowerCase() === candidate.pairAddress.toLowerCase())) return;
-    if (this.state.trades.some(t => String(t.pairAddress || "").toLowerCase() === String(candidate.pairAddress || "").toLowerCase())) return;
+    if (open.some(p => String(p.chainId || "bsc").toLowerCase() === chainId && String(p.pairAddress || "").toLowerCase() === String(candidate.pairAddress || "").toLowerCase())) return;
+    if (this.state.trades.some(t => String(t.chainId || "bsc").toLowerCase() === chainId && String(t.pairAddress || "").toLowerCase() === String(candidate.pairAddress || "").toLowerCase())) return;
     if (!(candidate.priceUsd > 0)) return;
     const position = {
       id: candidate.id, chainId: candidate.chainId || "bsc", pairAddress: candidate.pairAddress, tokenAddress: candidate.tokenAddress,
