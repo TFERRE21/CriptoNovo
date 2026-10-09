@@ -135,7 +135,10 @@ class PaperEngine {
       const seen = new Set(this.state.seenPairAddresses);
       const now = Date.now();
       this.state.pairsAnalyzed = Number(this.state.pairsAnalyzed || 0) + pairs.length;
-      const chainCounts = pairs.reduce((acc, pair) => { const chain = String(pair.chainId || "unknown").toLowerCase(); acc[chain] = (acc[chain] || 0) + 1; return acc; }, {});\n      const eligibleCounts = pairs.reduce((acc, pair) => { const chain = String(pair.chainId || "unknown").toLowerCase(); const verdict = evaluatePair(pair, now).approved ? "aprovados" : "bloqueados"; acc[chain] ||= { aprovados: 0, bloqueados: 0 }; acc[chain][verdict]++; return acc; }, {});\n      this.addLog(`Consulta multirrede: ${pairs.length} pares únicos — ${Object.entries(chainCounts).map(([chain, count]) => `${chain}: ${count}`).join(", ") || "nenhum par retornado"}.`, "scan");\n      this.addLog(`Filtros por rede: ${Object.entries(eligibleCounts).map(([chain, counts]) => `${chain}: ${counts.aprovados} aprovados / ${counts.bloqueados} bloqueados`).join("; ") || "sem dados"}.`, "scan");
+      const chainCounts = pairs.reduce((acc, pair) => { const chain = String(pair.chainId || "unknown").toLowerCase(); acc[chain] = (acc[chain] || 0) + 1; return acc; }, {});
+      const eligibleCounts = pairs.reduce((acc, pair) => { const chain = String(pair.chainId || "unknown").toLowerCase(); const verdict = evaluatePair(pair, now).approved ? "aprovados" : "bloqueados"; acc[chain] ||= { aprovados: 0, bloqueados: 0 }; acc[chain][verdict]++; return acc; }, {});
+      this.addLog(`Consulta multirrede: ${pairs.length} pares únicos — ${Object.entries(chainCounts).map(([chain, count]) => `${chain}: ${count}`).join(", ") || "nenhum par retornado"}.`, "scan");
+      this.addLog(`Filtros por rede: ${Object.entries(eligibleCounts).map(([chain, counts]) => `${chain}: ${counts.aprovados} aprovados / ${counts.bloqueados} bloqueados`).join("; ") || "sem dados"}.`, "scan");
       const candidatesById = new Map(this.state.candidates.map(item => [String(item.id).toLowerCase(), item]));
       for (const pair of pairs) {
         const address = String(pair.pairAddress || "").toLowerCase();
