@@ -494,6 +494,7 @@ class PaperEngine {
       next[chain] = { entryUsd, takeProfitNetPct, stopLossEnabled: item.stopLossEnabled === true, stopLossNetPct };
     }
     this.state.settings = next;
+    this.state.settingsUpdatedAt = new Date().toISOString();
     // Apply the selected stop-loss toggle immediately to already-open paper positions.
     for (const position of this.state.positions.filter(p => p.status === "OPEN")) {
       const chain = String(position.chainId || "bsc").toLowerCase();
@@ -513,6 +514,8 @@ class PaperEngine {
     return { ...this.state, positions, openPositionsCount: positions.length,
       closedTradesCount: this.state.trades.length, experiment: { targetEntries: 30, entriesOpened: 0, completed: false, ...(this.state.experiment || {}) }, realizedPnlUsd: Number(realizedPnlUsd.toFixed(4)),
       settings: { ...defaultSettings(), ...(this.state.settings || {}) },
+      settingsUpdatedAt: this.state.settingsUpdatedAt || null,
+      engineBuild: "config-guard-2026-10-09",
       targetNetPct: numEnv("TAKE_PROFIT_NET_PCT", 4), mode: "PAPER" };
   }
 }
