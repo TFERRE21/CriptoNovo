@@ -49,7 +49,7 @@ function evaluatePair(pair, now = Date.now()) {
   const maxAge = numEnv("MAX_PAIR_AGE_HOURS", 24);
   const reasons = [];
   if (!pair?.pairAddress || !pair?.baseToken?.address || !pair?.quoteToken?.address) reasons.push("Dados incompletos");
-  if (String(pair?.chainId || "").toLowerCase() !== "bnb") reasons.push("Rede diferente de BNB Chain");
+  if (String(pair?.chainId || "").toLowerCase() !== "bsc") reasons.push("Rede diferente de BNB Chain");
   if (liquidity < minLiquidity) reasons.push(`Liquidez abaixo do mínimo (US$${minLiquidity})`);
   if (!Number.isFinite(ageHours) || ageHours < 0 || ageHours > maxAge) reasons.push("Idade do par ausente ou fora do limite");
   const selected = tokenSide(pair);
@@ -72,14 +72,14 @@ class PaperEngine {
     if (this.polling) return;
     this.polling = true;
     try {
-      // Search endpoint is a discovery approximation, not a complete new-pair event feed.
+      // Search endpoint is a discovery approximation, not a complete new-pair event feed. DexScreener identifies BNB Chain with chainId "bsc".
       const response = await fetch("https://api.dexscreener.com/latest/dex/search?q=WBNB", {
         headers: { accept: "application/json" }, signal: AbortSignal.timeout(12000)
       });
       if (!response.ok) throw new Error(`DexScreener respondeu HTTP ${response.status}`);
       const data = await response.json();
       const pairs = (Array.isArray(data.pairs) ? data.pairs : [])
-        .filter(p => String(p.chainId).toLowerCase() === "bnb")
+        .filter(p => String(p.chainId).toLowerCase() === "bsc")
         .sort((a, b) => Number(b.pairCreatedAt || 0) - Number(a.pairCreatedAt || 0))
         .slice(0, 100);
       const seen = new Set(this.state.seenPairAddresses);
