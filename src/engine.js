@@ -6,7 +6,7 @@ const STATE_FILE = path.join(DATA_DIR, "state.json");
 const WBNB = "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c";
 
 const defaultState = () => ({
-  running: false, startedAt: null, lastPollAt: null, lastError: null, pairsAnalyzed: 0, activityLogs: [],
+  running: false, startedAt: null, lastPollAt: null, lastError: null, pairsAnalyzed: 0, activityLogs: [], experiment: { targetEntries: 10, entriesOpened: 0, completed: false, startedAt: null },
   paperBalanceUsd: Number(process.env.PAPER_BALANCE_USD || 100),
   initialBalanceUsd: Number(process.env.PAPER_BALANCE_USD || 100),
   candidates: [], positions: [], trades: [], seenPairAddresses: []
@@ -153,7 +153,10 @@ class PaperEngine {
     }
   }
   openPaperPosition(candidate) {
-    const maxOpen = Math.max(1, Math.floor(numEnv("MAX_OPEN_POSITIONS", 3)));
+    this.state.experiment = { targetEntries: 10, entriesOpened: 0, completed: false, startedAt: null, ...(this.state.experiment || {}) };
+    const maxOpen = 10;
+    const totalEntries = Number(this.state.experiment.entriesOpened || 0);
+    if (totalEntries >= 10 || this.state.experiment.completed) return;
     const notional = numEnv("PAPER_ORDER_USD", 10);
     const open = this.state.positions.filter(p => p.status === "OPEN");
     if (open.length >= maxOpen || this.state.paperBalanceUsd < notional) return;
@@ -165,9 +168,13 @@ class PaperEngine {
       notionalUsd: notional, entryPriceUsd: candidate.priceUsd, lastPriceUsd: candidate.priceUsd,
       estimatedNetPct: -numEnv("ESTIMATED_ROUNDTRIP_COST_PCT", 1.5),
       status: "OPEN", openedAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-      takeProfitPriceUsd: candidate.priceUsd * (1 + (numEnv("TAKE_PROFIT_NET_PCT", 5) + numEnv("ESTIMATED_ROUNDTRIP_COST_PCT", 1.5)) / 100)
+      takeProfitPriceUsd: candidate.priceUsd * (1 + (numEnv("TAKE_PROFIT_NET_PCT", 5) + numEnv("ESTIMATED_ROUNDTRIP_COST_PCT", 1.5)) / 100),
+      experimentEntryNumber: totalEntries + 1,
+      entryFeatures: { liquidityUsd: Number(candidate.liquidityUsd || 0), ageMinutes: candidate.ageMinutes, volume24hUsd: Number(candidate.volume24hUsd || 0), tokenSymbol: candidate.tokenSymbol, pairAddress: candidate.pairAddress, dexId: candidate.dexId || null, priceUsd: Number(candidate.priceUsd || 0) }
     };
     this.state.paperBalanceUsd -= notional;
+    this.state.experiment.entriesOpened = totalEntries + 1;
+    this.state.experiment.startedAt = this.state.experiment.startedAt || new Date().toISOString();
     this.state.positions.unshift(position);
     this.addLog(`ENTRADA SIMULADA: ${candidate.tokenSymbol} a ${candidate.priceUsd}; ordem virtual ${notional}.`, 'entry', { tokenSymbol: candidate.tokenSymbol, pct: position.estimatedNetPct });
   }
@@ -204,6 +211,14 @@ class PaperEngine {
     position.pnlUsd = Number(pnlUsd.toFixed(6));
     this.state.paperBalanceUsd += position.notionalUsd + pnlUsd;
     this.state.trades.unshift({ ...position });
+    const experimentTrades = this.state.trades.filter(t => Number(t.experimentEntryNumber) > 0);
+    if (experimentTrades.length >= 10 && this.state.experiment.entriesOpened >= 10) {
+      this.state.experiment.completed = true;
+      const winners = experimentTrades.filter(t => Number(t.pnlUsd) > 0);
+      const losers = experimentTrades.filter(t => Number(t.pnlUsd) <= 0);
+      const avg = arr => arr.length ? arr.reduce((sum, t) => sum + Number(t.entryFeatures?.liquidityUsd || 0), 0) / arr.length : 0;
+      this.addLog(`EXPERIMENTO FINALIZADO: ${experimentTrades.length} entradas; ${winners.length} positivas e ${losers.length} negativas. Liquidez média vencedoras: ${avg(winners).toFixed(0)}; perdedoras: ${avg(losers).toFixed(0)}.`, 'experiment');
+    }
     this.addLog(`SAÍDA SIMULADA: ${position.tokenSymbol} — ${pnlUsd >= 0 ? '+' : ''}${pnlUsd.toFixed(4)} (${position.estimatedNetPct.toFixed(2)}% líquido estimado). Motivo: ${reason}.`, pnlUsd >= 0 ? 'profit' : 'loss', { tokenSymbol: position.tokenSymbol, pnlUsd, pct: position.estimatedNetPct });
     this.state.trades = this.state.trades.slice(0, 500);
   }
@@ -232,7 +247,7 @@ class PaperEngine {
     const positions = this.state.positions.filter(p => p.status === "OPEN");
     const realizedPnlUsd = this.state.trades.reduce((sum, t) => sum + Number(t.pnlUsd || 0), 0);
     return { ...this.state, positions, openPositionsCount: positions.length,
-      closedTradesCount: this.state.trades.length, realizedPnlUsd: Number(realizedPnlUsd.toFixed(4)),
+      closedTradesCount: this.state.trades.length, experiment: { targetEntries: 10, entriesOpened: 0, completed: false, ...(this.state.experiment || {}) }, realizedPnlUsd: Number(realizedPnlUsd.toFixed(4)),
       targetNetPct: numEnv("TAKE_PROFIT_NET_PCT", 5), mode: "PAPER" };
   }
 }
