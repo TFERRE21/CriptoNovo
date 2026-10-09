@@ -144,8 +144,8 @@ class PaperEngine {
         if (isNew) {
           this.state.candidates.unshift(candidate);
           seen.add(address);
-          if (result.approved) this.addLog(`Novo par aprovado: ${candidate.tokenSymbol} — liquidez ${candidate.liquidityUsd.toFixed(2)} USD.`, 'approved', { tokenSymbol: candidate.tokenSymbol, pairAddress: candidate.pairAddress });
-          else if (this.state.candidates.length < 20) this.addLog(`Par bloqueado: ${candidate.tokenSymbol} — ${result.reasons.join('; ')}.`, 'blocked', { tokenSymbol: candidate.tokenSymbol });
+          if (result.approved) this.addLog(`Novo par aprovado (${candidate.chainId}): ${candidate.tokenSymbol} — liquidez ${candidate.liquidityUsd.toFixed(2)} USD.`, 'approved', { tokenSymbol: candidate.tokenSymbol, chainId: candidate.chainId, pairAddress: candidate.pairAddress });
+          else if (this.state.candidates.length < 20) this.addLog(`Par bloqueado (${candidate.chainId}): ${candidate.tokenSymbol} — ${result.reasons.join('; ')}.`, 'blocked', { tokenSymbol: candidate.tokenSymbol, chainId: candidate.chainId });
           if (this.state.running && result.approved) this.openPaperPosition(candidate);
         } else {
           const existing = candidatesById.get(address);
