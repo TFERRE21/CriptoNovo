@@ -75,8 +75,8 @@ function evaluatePair(pair, now = Date.now()) {
   const priceChange15m = Number(pair?.priceChange?.m15 || 0);
   const priceChange1h = Number(pair?.priceChange?.h1 || 0);
   const volume5m = Number(pair?.volume?.m5 || 0);
-  const maxAge = numEnv("MAX_PAIR_AGE_HOURS", 72);
-  const minAge = numEnv("MIN_PAIR_AGE_MINUTES", 60);
+  const maxAge = numEnv("MAX_PAIR_AGE_HOURS", 720);
+  const minAge = numEnv("MIN_PAIR_AGE_MINUTES", 30);
   const minBuyRatio = numEnv("MIN_BUY_SELL_RATIO", 1.2);
   const reasons = [];
   if (!pair?.pairAddress || !pair?.baseToken?.address || !pair?.quoteToken?.address) reasons.push("Dados incompletos");
