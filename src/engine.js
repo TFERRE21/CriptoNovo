@@ -4,12 +4,15 @@ const path = require("node:path");
 const DATA_DIR = path.join(__dirname, "..", "data");
 const STATE_FILE = path.join(DATA_DIR, "state.json");
 const WBNB = "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c";
-const SUPPORTED_CHAINS = new Set(["bsc", "ethereum", "solana", "base", "arbitrum", "optimism", "polygon", "avalanche"]);
+const CHAIN_IDS = ["bsc", "ethereum", "solana", "base", "arbitrum", "optimism", "polygon", "avalanche"];
+const SUPPORTED_CHAINS = new Set(CHAIN_IDS);
+const chainBalances = amount => Object.fromEntries(CHAIN_IDS.map(chain => [chain, Number(amount)]));
 
 const defaultState = () => ({
   running: false, startedAt: null, lastPollAt: null, lastError: null, pairsAnalyzed: 0, activityLogs: [], experiment: { targetEntries: 10, entriesOpened: 0, completed: false, startedAt: null },
-  paperBalanceUsd: Number(process.env.PAPER_BALANCE_USD || 100),
-  initialBalanceUsd: Number(process.env.PAPER_BALANCE_USD || 100),
+  paperBalanceUsd: Number(process.env.PAPER_BALANCE_USD || 100) * CHAIN_IDS.length,
+  initialBalanceUsd: Number(process.env.PAPER_BALANCE_USD || 100) * CHAIN_IDS.length,
+  networkBalances: chainBalances(Number(process.env.PAPER_BALANCE_USD || 100)),
   candidates: [], positions: [], trades: [], seenPairAddresses: []
 });
 
@@ -183,7 +186,9 @@ class PaperEngine {
     if (totalEntries >= 10 || this.state.experiment.completed) return;
     const notional = numEnv("PAPER_ORDER_USD", 10);
     const open = this.state.positions.filter(p => p.status === "OPEN");
-    if (open.length >= maxOpen || this.state.paperBalanceUsd < notional) return;
+    const chainId = String(candidate.chainId || "bsc").toLowerCase();
+    this.state.networkBalances = this.state.networkBalances || chainBalances(Number(process.env.PAPER_BALANCE_USD || 100));
+    if (open.length >= maxOpen || Number(this.state.networkBalances[chainId] ?? 100) < notional) return;
     if (open.some(p => p.pairAddress.toLowerCase() === candidate.pairAddress.toLowerCase())) return;
     if (this.state.trades.some(t => String(t.pairAddress || "").toLowerCase() === String(candidate.pairAddress || "").toLowerCase())) return;
     if (!(candidate.priceUsd > 0)) return;
@@ -197,7 +202,8 @@ class PaperEngine {
       experimentEntryNumber: totalEntries + 1,
       entryFeatures: { liquidityUsd: Number(candidate.liquidityUsd || 0), ageMinutes: candidate.ageMinutes, volume24hUsd: Number(candidate.volume24hUsd || 0), tokenSymbol: candidate.tokenSymbol, pairAddress: candidate.pairAddress, dexId: candidate.dexId || null, priceUsd: Number(candidate.priceUsd || 0) }
     };
-    this.state.paperBalanceUsd -= notional;
+    this.state.networkBalances[chainId] = Number(this.state.networkBalances[chainId] ?? 100) - notional;
+    this.state.paperBalanceUsd = Object.values(this.state.networkBalances).reduce((sum, value) => sum + Number(value || 0), 0);
     this.state.experiment.entriesOpened = totalEntries + 1;
     this.state.experiment.startedAt = this.state.experiment.startedAt || new Date().toISOString();
     this.state.positions.unshift(position);
@@ -235,7 +241,10 @@ class PaperEngine {
     position.grossPnlUsd = Number(grossPnlUsd.toFixed(6));
     position.estimatedCostsUsd = Number(costUsd.toFixed(6));
     position.pnlUsd = Number(pnlUsd.toFixed(6));
-    this.state.paperBalanceUsd += position.notionalUsd + pnlUsd;
+    const chainId = String(position.chainId || "bsc").toLowerCase();
+    this.state.networkBalances = this.state.networkBalances || chainBalances(Number(process.env.PAPER_BALANCE_USD || 100));
+    this.state.networkBalances[chainId] = Number(this.state.networkBalances[chainId] ?? 100) + position.notionalUsd + pnlUsd;
+    this.state.paperBalanceUsd = Object.values(this.state.networkBalances).reduce((sum, value) => sum + Number(value || 0), 0);
     this.state.trades.unshift({ ...position });
     const experimentTrades = this.state.trades.filter(t => Number(t.experimentEntryNumber) > 0);
     if (experimentTrades.length >= 10 && this.state.experiment.entriesOpened >= 10) {
@@ -266,8 +275,8 @@ class PaperEngine {
   async reset() {
     await this.stop();
     const initial = Number(process.env.PAPER_BALANCE_USD || 100);
-    this.state = { ...defaultState(), paperBalanceUsd: initial, initialBalanceUsd: initial, running: true, startedAt: new Date().toISOString() };
-    this.addLog("NOVO EXPERIMENTO: estado anterior zerado; saldo virtual US$100; objetivo de 10 entradas de US$10; filtros de qualidade reforçados.", "experiment");
+    this.state = { ...defaultState(), paperBalanceUsd: initial * CHAIN_IDS.length, initialBalanceUsd: initial * CHAIN_IDS.length, networkBalances: chainBalances(initial), running: true, startedAt: new Date().toISOString() };
+    this.addLog("NOVO EXPERIMENTO: estado anterior zerado; saldo virtual US$100 por rede; objetivo de 10 entradas de US$10 por rede; filtros de qualidade reforçados.", "experiment");
     await saveState(this.state);
     this.timer = setInterval(() => this.poll(), Math.max(15000, numEnv("POLL_INTERVAL_MS", 30000)));
     this.poll().catch(error => { this.state.lastError = error.message || "Falha na consulta inicial"; saveState(this.state).catch(() => {}); });
