@@ -444,7 +444,7 @@ class PaperEngine {
     this.state.paperBalanceUsd = Object.values(this.state.networkBalances).reduce((sum, value) => sum + Number(value || 0), 0);
     this.state.trades.unshift({ ...position });
     const experimentTrades = this.state.trades.filter(t => Number(t.experimentEntryNumber) > 0);
-    if (experimentTrades.length >= 30 && this.state.experiment.entriesOpened >= 30) {
+    if (experimentTrades.length >= 60 && this.state.experiment.entriesOpened >= 60) {
       this.state.experiment.completed = true;
       const winners = experimentTrades.filter(t => Number(t.pnlUsd) > 0);
       const losers = experimentTrades.filter(t => Number(t.pnlUsd) <= 0);
@@ -512,7 +512,7 @@ class PaperEngine {
     const positions = this.state.positions.filter(p => p.status === "OPEN");
     const realizedPnlUsd = this.state.trades.reduce((sum, t) => sum + Number(t.pnlUsd || 0), 0);
     return { ...this.state, positions, openPositionsCount: positions.length,
-      closedTradesCount: this.state.trades.length, experiment: { targetEntries: 30, entriesOpened: 0, completed: false, ...(this.state.experiment || {}) }, realizedPnlUsd: Number(realizedPnlUsd.toFixed(4)),
+      closedTradesCount: this.state.trades.length, experiment: { targetEntries: 60, entriesOpened: 0, completed: false, ...(this.state.experiment || {}) }, realizedPnlUsd: Number(realizedPnlUsd.toFixed(4)),
       settings: { ...defaultSettings(), ...(this.state.settings || {}) },
       settingsUpdatedAt: this.state.settingsUpdatedAt || null,
       engineBuild: "config-guard-2026-10-09",
