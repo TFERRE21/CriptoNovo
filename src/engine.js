@@ -1,7 +1,7 @@
 const fs = require("node:fs/promises");
 const path = require("node:path");
 
-const DATA_DIR = path.join(__dirname, "..", "data");
+const DATA_DIR = process.env.DATA_DIR ? path.resolve(process.env.DATA_DIR) : path.join(__dirname, "..", "data");
 const STATE_FILE = path.join(DATA_DIR, "state.json");
 const CHAIN_IDS = ["bsc", "ethereum", "solana"];
 const SUPPORTED_CHAINS = new Set(CHAIN_IDS);
@@ -217,7 +217,7 @@ class PaperEngine {
     this.state.running = true;
     this.state.startedAt = this.state.startedAt || new Date().toISOString();
     await saveState(this.state);
-    if (!this.timer) this.timer = setInterval(() => this.poll(), Math.max(15000, numEnv("POLL_INTERVAL_MS", 30000)));
+    if (!this.timer) this.timer = setInterval(() => this.poll(), Math.max(10000, numEnv("POLL_INTERVAL_MS", 15000)));
     this.poll().catch(error => {
       this.state.lastError = error?.message || "Falha na consulta inicial";
       saveState(this.state).catch(() => {});
@@ -359,9 +359,9 @@ class PaperEngine {
     const open = this.state.positions.filter(p => p.status === "OPEN");
     this.state.networkBalances = this.state.networkBalances || chainBalances(Number(process.env.PAPER_BALANCE_USD || 100));
     const availableBalance = Math.max(0, Number(this.state.networkBalances[chainId] ?? 100));
-    const hasProfitableTrade = this.state.trades.some(t => String(t.chainId || "bsc").toLowerCase() === chainId && Number(t.pnlUsd || 0) > 0);
     const configuredNotional = Number(networkSettings.entryUsd || 10);
-    const notional = hasProfitableTrade ? Number((availableBalance * 0.99).toFixed(2)) : configuredNotional;
+    // Invest 99% of the configured per-coin order size, capped by available network cash.
+    const notional = Number(Math.min(availableBalance, configuredNotional * 0.99).toFixed(2));
     if (open.length >= maxOpen || open.filter(p => String(p.chainId || "bsc").toLowerCase() === chainId).length >= 3 || availableBalance < notional || notional < 1) return;
     if (open.some(p => String(p.chainId || "bsc").toLowerCase() === chainId && String(p.pairAddress || "").toLowerCase() === String(candidate.pairAddress || "").toLowerCase())) return;
     if (this.state.trades.some(t => String(t.chainId || "bsc").toLowerCase() === chainId && String(t.pairAddress || "").toLowerCase() === String(candidate.pairAddress || "").toLowerCase())) return;
@@ -402,6 +402,8 @@ class PaperEngine {
               const grossChangePct = (price / position.entryPriceUsd - 1) * 100;
               const costPct = numEnv("ESTIMATED_ROUNDTRIP_COST_PCT", 1.5);
               position.estimatedNetPct = grossChangePct - costPct;
+              position.currentValueUsd = Number((position.notionalUsd * price / position.entryPriceUsd).toFixed(6));
+              position.unrealizedPnlUsd = Number((position.notionalUsd * position.estimatedNetPct / 100).toFixed(6));
               position.updatedAt = new Date().toISOString();
               priceUpdated = true;
               const settings = this.state.settings?.[chainId] || defaultSettings()[chainId];
@@ -459,7 +461,7 @@ class PaperEngine {
     if (this.state.running && this.timer) { this.addLog("Comando iniciar recebido: monitor já estava ativo.", "info"); await saveState(this.state); return; }
     this.addLog("Monitor de simulação iniciado manualmente.", "info");
     this.state.running = true; this.state.startedAt = this.state.startedAt || new Date().toISOString();
-    if (!this.timer) this.timer = setInterval(() => this.poll(), Math.max(15000, numEnv("POLL_INTERVAL_MS", 30000)));
+    if (!this.timer) this.timer = setInterval(() => this.poll(), Math.max(10000, numEnv("POLL_INTERVAL_MS", 15000)));
     await this.poll();
     await saveState(this.state);
   }
@@ -477,7 +479,7 @@ class PaperEngine {
     this.state = { ...defaultState(), settings: savedSettings, paperBalanceUsd: initial * CHAIN_IDS.length, initialBalanceUsd: initial * CHAIN_IDS.length, networkBalances: chainBalances(initial), running: true, startedAt: new Date().toISOString() };
     this.addLog("NOVO EXPERIMENTO REINICIADO: histórico simulado zerado; US$100 virtuais por rede; stop-loss desativado; saídas por meta ou tempo máximo com preço atualizado.", "experiment");
     await saveState(this.state);
-    this.timer = setInterval(() => this.poll(), Math.max(15000, numEnv("POLL_INTERVAL_MS", 30000)));
+    this.timer = setInterval(() => this.poll(), Math.max(10000, numEnv("POLL_INTERVAL_MS", 15000)));
     this.poll().catch(error => { this.state.lastError = error.message || "Falha na consulta inicial"; saveState(this.state).catch(() => {}); });
   }
   async updateSettings(input) {
@@ -503,7 +505,7 @@ class PaperEngine {
       position.stopLossNetPctAtEntry = Number(setting.stopLossNetPct ?? 2.5);
       position.takeProfitNetPctAtEntry = Number(setting.takeProfitNetPct ?? 4);
     }
-    this.addLog("Configurações salvas no servidor. Stop-loss permanentemente desativado; saídas apenas por meta líquida ou tempo máximo após cotação atualizada.", "settings");
+    this.addLog("Configurações salvas no servidor. Stop-loss desativado; saída somente ao atingir a meta líquida.", "settings");
     await saveState(this.state);
     return this.state.settings;
   }
