@@ -352,10 +352,18 @@ class PaperEngine {
     const chainEntries = [...this.state.positions, ...this.state.trades].filter(p => String(p.chainId || "bsc").toLowerCase() === chainId && Number(p.experimentEntryNumber) > 0).length;
     if (chainEntries >= 20 || totalEntries >= 60 || this.state.experiment.completed) return;
     const networkSettings = this.state.settings?.[chainId] || defaultSettings()[chainId];
-    const notional = Number(networkSettings.entryUsd || 10);
     const open = this.state.positions.filter(p => p.status === "OPEN");
     this.state.networkBalances = this.state.networkBalances || chainBalances(Number(process.env.PAPER_BALANCE_USD || 100));
-    if (open.length >= maxOpen || open.filter(p => String(p.chainId || "bsc").toLowerCase() === chainId).length >= 3 || Number(this.state.networkBalances[chainId] ?? 100) < notional) return;
+    const availableBalance = Math.max(0, Number(this.state.networkBalances[chainId] ?? 100));
+    // Após o primeiro trade fechado com lucro nesta rede, compõe agressivamente no modo paper.
+    const hasProfitableTrade = this.state.trades.some(t =>
+      String(t.chainId || "bsc").toLowerCase() === chainId && Number(t.pnlUsd || 0) > 0
+    );
+    const configuredNotional = Number(networkSettings.entryUsd || 10);
+    const notional = hasProfitableTrade
+      ? Number((availableBalance * 0.99).toFixed(2))
+      : configuredNotional;
+    if (open.length >= maxOpen || open.filter(p => String(p.chainId || "bsc").toLowerCase() === chainId).length >= 3 || availableBalance < notional || notional < 1) return;
     if (open.some(p => String(p.chainId || "bsc").toLowerCase() === chainId && String(p.pairAddress || "").toLowerCase() === String(candidate.pairAddress || "").toLowerCase())) return;
     if (this.state.trades.some(t => String(t.chainId || "bsc").toLowerCase() === chainId && String(t.pairAddress || "").toLowerCase() === String(candidate.pairAddress || "").toLowerCase())) return;
     if (!(candidate.priceUsd > 0)) return;
@@ -377,7 +385,7 @@ class PaperEngine {
     this.state.experiment.entriesOpened = totalEntries + 1;
     this.state.experiment.startedAt = this.state.experiment.startedAt || new Date().toISOString();
     this.state.positions.unshift(position);
-    this.addLog(`ENTRADA SIMULADA: ${candidate.tokenSymbol} a ${candidate.priceUsd}; ordem virtual ${notional}.`, 'entry', { tokenSymbol: candidate.tokenSymbol, chainId, pct: position.estimatedNetPct });
+    this.addLog(`ENTRADA SIMULADA: ${candidate.tokenSymbol} a ${candidate.priceUsd}; ordem virtual US${notional.toFixed(2)}${hasProfitableTrade ? " (99% do saldo disponível após lucro anterior)" : " (valor base configurado)"}.`, 'entry', { tokenSymbol: candidate.tokenSymbol, chainId, pct: position.estimatedNetPct, notionalUsd: notional, compounding: hasProfitableTrade });
   }
   async markToMarket() {
     for (const position of this.state.positions.filter(p => p.status === "OPEN")) {
@@ -469,7 +477,7 @@ class PaperEngine {
     const initial = Number(process.env.PAPER_BALANCE_USD || 100);
     const savedSettings = this.state.settings || defaultSettings();
     this.state = { ...defaultState(), settings: savedSettings, paperBalanceUsd: initial * CHAIN_IDS.length, initialBalanceUsd: initial * CHAIN_IDS.length, networkBalances: chainBalances(initial), running: true, startedAt: new Date().toISOString() };
-    this.addLog("NOVO EXPERIMENTO: estado anterior zerado; saldo virtual US$100 por rede; objetivo de 10 entradas de US$10 por rede (30 no total); filtros de qualidade reforçados.", "experiment");
+    this.addLog("NOVO EXPERIMENTO REINICIADO: histórico simulado zerado; US$100 virtuais por rede; stop-loss desativado; após a primeira saída lucrativa em cada rede, próximas entradas usam 99% do saldo virtual disponível dessa rede.", "experiment");
     await saveState(this.state);
     this.timer = setInterval(() => this.poll(), Math.max(15000, numEnv("POLL_INTERVAL_MS", 30000)));
     this.poll().catch(error => { this.state.lastError = error.message || "Falha na consulta inicial"; saveState(this.state).catch(() => {}); });
