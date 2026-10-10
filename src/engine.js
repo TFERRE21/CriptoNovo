@@ -422,14 +422,12 @@ class PaperEngine {
       } catch (error) {
         this.addLog(`Falha ao atualizar preço de ${position.tokenSymbol} na rede ${chainId}: ${error.message || "erro de consulta"}; mantendo posição aberta.`, "warning", { tokenSymbol: position.tokenSymbol, chainId });
       }
-      // A failed/stale quote must never be turned into an exit price. Time exits only occur
-      // after a fresh price was received in this polling cycle.
-      // Política solicitada: não encerrar por tempo. Permanecer aberta até a meta líquida.
-      // Caso a cotação esteja indisponível, conservar a posição e aguardar uma nova consulta.
-      if (expired && !priceUpdated) {
+      // Política solicitada: manter posição aberta até atingir a meta de lucro líquido.
+      // Não há stop-loss nem saída automática por tempo. Sem cotação nova, aguardar a próxima consulta.
+      if (!priceUpdated) {
         position.exitPendingPrice = true;
         position.exitPendingSince = position.exitPendingSince || new Date().toISOString();
-        this.addLog(`Posição ${position.tokenSymbol} continua aberta: meta ainda não atingida e cotação atual indisponível.`, "warning", { tokenSymbol: position.tokenSymbol, chainId });
+        this.addLog(`Posição ${position.tokenSymbol} permanece aberta aguardando cotação atualizada; saída somente ao atingir a meta líquida.`, "warning", { tokenSymbol: position.tokenSymbol, chainId });
       }
     }
   }
