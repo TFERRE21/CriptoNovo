@@ -382,7 +382,7 @@ class PaperEngine {
     this.state.experiment.entriesOpened = totalEntries + 1;
     this.state.experiment.startedAt = this.state.experiment.startedAt || new Date().toISOString();
     this.state.positions.unshift(position);
-    this.addLog(`ENTRADA SIMULADA: ${candidate.tokenSymbol} a ${candidate.priceUsd}; ordem virtual US$${notional.toFixed(2)}.`, "entry", { tokenSymbol: candidate.tokenSymbol, chainId, pct: position.estimatedNetPct, notionalUsd: notional });
+    this.addLog(`ENTRADA SIMULADA: ${candidate.tokenSymbol} a ${candidate.priceUsd}; ordem virtual US${notional.toFixed(2)} (99% da entrada configurada).`, "entry", { tokenSymbol: candidate.tokenSymbol, chainId, pct: position.estimatedNetPct, notionalUsd: notional });
   }
   async markToMarket() {
     for (const position of this.state.positions.filter(p => p.status === "OPEN")) {
