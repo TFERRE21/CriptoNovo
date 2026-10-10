@@ -3,7 +3,6 @@ const path = require("node:path");
 
 const DATA_DIR = path.join(__dirname, "..", "data");
 const STATE_FILE = path.join(DATA_DIR, "state.json");
-const WBNB = "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c";
 const CHAIN_IDS = ["bsc", "ethereum", "solana"];
 const SUPPORTED_CHAINS = new Set(CHAIN_IDS);
 const chainBalances = amount => Object.fromEntries(CHAIN_IDS.map(chain => [chain, Number(amount)]));
@@ -15,12 +14,12 @@ const defaultSettings = () => Object.fromEntries(CHAIN_IDS.map(chain => [chain, 
 }]));
 
 const defaultState = () => ({
-  running: false, startedAt: null, lastPollAt: null, lastError: null, pairsAnalyzed: 0, activityLogs: [], experiment: { targetEntries: 60, entriesOpened: 0, completed: false, startedAt: null },
+  running: false, startedAt: null, lastPollAt: null, lastError: null, pairsAnalyzed: 0, activityLogs: [],
+  experiment: { targetEntries: 60, entriesOpened: 0, completed: false, startedAt: null },
   paperBalanceUsd: Number(process.env.PAPER_BALANCE_USD || 100) * CHAIN_IDS.length,
   initialBalanceUsd: Number(process.env.PAPER_BALANCE_USD || 100) * CHAIN_IDS.length,
   networkBalances: chainBalances(Number(process.env.PAPER_BALANCE_USD || 100)),
-  settings: defaultSettings(),
-  candidates: [], positions: [], trades: [], seenPairAddresses: []
+  settings: defaultSettings(), candidates: [], positions: [], trades: [], seenPairAddresses: []
 });
 
 async function loadState() {
@@ -93,7 +92,6 @@ function evaluatePair(pair, now = Date.now()) {
   let entryScore = 0;
   let strategy = "ETH_TREND";
   if (chain === "ethereum") {
-    // Keep Ethereum's existing strategy unchanged: it was the best performer in the user's sample.
     const minFreshLiquidity = numEnv("MIN_FRESH_LIQUIDITY_USD", 1800);
     const minFreshVolume5m = numEnv("MIN_FRESH_VOLUME_5M_USD", 500);
     const minFreshTxns5m = numEnv("MIN_FRESH_TXNS_5M", 4);
@@ -130,7 +128,6 @@ function evaluatePair(pair, now = Date.now()) {
       priceChange1h >= 1 && priceChange1h <= 10
     ].filter(Boolean).length;
   } else if (chain === "bsc") {
-    // BNB Chain: early launch momentum, but avoid the first chaotic seconds and extreme candles.
     strategy = "BSC_EARLY_MOMENTUM";
     const minAgeMinutes = numEnv("BSC_MIN_AGE_MINUTES", 3);
     const maxAgeHours = numEnv("BSC_MAX_AGE_HOURS", 12);
@@ -154,7 +151,6 @@ function evaluatePair(pair, now = Date.now()) {
       buys5m + sells5m >= minTx5m * 2
     ].filter(Boolean).length;
   } else if (chain === "solana") {
-    // Solana: faster meme-token flow, requiring more liquidity and stronger short-term demand.
     strategy = "SOLANA_FAST_FLOW";
     const minAgeMinutes = numEnv("SOL_MIN_AGE_MINUTES", 0);
     const maxAgeHours = numEnv("SOL_MAX_AGE_HOURS", 24);
@@ -175,8 +171,6 @@ function evaluatePair(pair, now = Date.now()) {
     if (priceChange1h < numEnv("SOL_MIN_PRICE_CHANGE_1H_PCT", -5)) reasons.push("Solana: tendência de 1 hora muito fraca");
     if (priceChange1h > numEnv("SOL_MAX_PRICE_CHANGE_1H_PCT", 25)) reasons.push("Solana: alta de 1 hora excessiva; risco de comprar após pump");
     if (volume5m <= 0) reasons.push("Solana: sem volume recente verificável");
-    // Ajuste provisório inspirado nos dois resultados positivos: combinar fluxo comprador
-    // de curto prazo com confirmação de tendência, evitando sinais isolados de 5 minutos.
     entryScore = [
       liquidity >= minLiq * 2, volume5m >= minVol5m * 2,
       buys5m > sells5m * minRatio,
@@ -187,16 +181,14 @@ function evaluatePair(pair, now = Date.now()) {
     ].filter(Boolean).length;
   }
 
-  // Shared confirmation pattern: recent buy pressure + active volume + controlled momentum.
-  // Sludge/QSB historical entry metrics were not present in the screenshot; Solana's added multi-timeframe filter is provisional and must be validated on paper trades.
   const buySellRatio5m = buys5m / Math.max(sells5m, 1);
-  const minCommonBuyRatio = 0.9;
-  const minCommonTxns5m = 2;
-  if (buys5m + sells5m < minCommonTxns5m) reasons.push(`Confirmação comum: menos de ${minCommonTxns5m} transações em 5 min`);
-  if (buySellRatio5m < minCommonBuyRatio) reasons.push(`Confirmação comum: relação compras/vendas em 5 min abaixo de ${minCommonBuyRatio}x`);
-  if (buys5m <= sells5m) reasons.push("Confirmação comum: vendas iguais ou superiores às compras nos últimos 5 min");
-  if (priceChange5m <= 0) reasons.push("Confirmação comum: preço sem impulso positivo em 5 min");
-  if (volume5m <= 0) reasons.push("Confirmação comum: sem volume recente");
+  if (chain !== "solana") {
+    if (buys5m + sells5m < 2) reasons.push("Confirmação comum: menos de 2 transações em 5 min");
+    if (buySellRatio5m < 0.9) reasons.push("Confirmação comum: relação compras/vendas em 5 min abaixo de 0,9x");
+    if (buys5m <= sells5m) reasons.push("Confirmação comum: vendas iguais ou superiores às compras nos últimos 5 min");
+    if (priceChange5m <= 0) reasons.push("Confirmação comum: preço sem impulso positivo em 5 min");
+    if (volume5m <= 0) reasons.push("Confirmação comum: sem volume recente");
+  }
   if (entryScore < 3) reasons.push(`Qualidade de entrada insuficiente (score ${entryScore}; mínimo 3)`);
 
   const selected = tokenSide(pair);
@@ -217,14 +209,15 @@ class PaperEngine {
   constructor() { this.state = null; this.timer = null; this.polling = false; }
   async init() {
     this.state = await loadState();
+    this.state.settings = { ...defaultSettings(), ...(this.state.settings || {}) };
+    for (const chain of CHAIN_IDS) {
+      this.state.settings[chain] = { ...defaultSettings()[chain], ...(this.state.settings[chain] || {}), stopLossEnabled: false };
+    }
     // Keep the monitor running across dashboard navigation and refreshes.
     this.state.running = true;
     this.state.startedAt = this.state.startedAt || new Date().toISOString();
     await saveState(this.state);
-    // Schedule continuous polling immediately; don't delay HTTP startup on a slow API.
-    if (!this.timer) {
-      this.timer = setInterval(() => this.poll(), Math.max(15000, numEnv("POLL_INTERVAL_MS", 30000)));
-    }
+    if (!this.timer) this.timer = setInterval(() => this.poll(), Math.max(15000, numEnv("POLL_INTERVAL_MS", 30000)));
     this.poll().catch(error => {
       this.state.lastError = error?.message || "Falha na consulta inicial";
       saveState(this.state).catch(() => {});
@@ -241,8 +234,11 @@ class PaperEngine {
     if (this.polling) return;
     this.polling = true;
     try {
-      // Search endpoint is approximate. Query several terms each cycle instead of repeatedly seeing only the same WBNB results.
-      const queries = ["WBNB USDT", "WBNB USDC", "BNB", "PancakeSwap", "WETH USDC", "WETH USDT", "USDC WETH", "USDT WETH", "ETH USDC", "ETH USDT", "PEPE WETH", "PEPE", "SHIB WETH", "SHIB", "LINK WETH", "LINK", "UNI WETH", "UNI", "AAVE WETH", "Uniswap", "SOL USDC", "SOL USDT", "Raydium", "Solana"];
+      const queries = [
+        "WBNB USDT", "WBNB USDC", "BNB", "PancakeSwap", "WETH USDC", "WETH USDT", "USDC WETH", "USDT WETH",
+        "ETH USDC", "ETH USDT", "PEPE WETH", "PEPE", "SHIB WETH", "SHIB", "LINK WETH", "LINK", "UNI WETH", "UNI",
+        "AAVE WETH", "Uniswap", "SOL USDC", "SOL USDT", "Raydium", "Solana"
+      ];
       const results = await Promise.all(queries.map(async q => {
         const response = await fetch(`https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(q)}`, {
           headers: { accept: "application/json" }, signal: AbortSignal.timeout(12000)
@@ -252,7 +248,6 @@ class PaperEngine {
         return Array.isArray(data.pairs) ? data.pairs : [];
       }));
       const byAddress = new Map();
-      // Supplement keyword search with DexScreener's latest token discovery feeds.
       const fetchFeed = async endpoint => {
         try {
           const response = await fetch(`https://api.dexscreener.com/${endpoint}`, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(10000) });
@@ -275,23 +270,32 @@ class PaperEngine {
         if (!SUPPORTED_CHAINS.has(chain) || !tokenAddress) continue;
         seeds.set(`${chain}:${tokenAddress.toLowerCase()}`, { chain, tokenAddress });
       }
-      const seedList = [...seeds.values()].slice(0, 12);
+      // Fairly sample each chain from the recent-token feed rather than taking only the first global twelve.
+      const seedsByChain = Object.fromEntries(CHAIN_IDS.map(chain => [chain, []]));
+      for (const seed of seeds.values()) seedsByChain[seed.chain].push(seed);
+      const seedList = CHAIN_IDS.flatMap(chain => seedsByChain[chain].slice(0, 12));
       const freshPairLists = await Promise.all(seedList.map(async token => {
         try {
           const response = await fetch(`https://api.dexscreener.com/token-pairs/v1/${encodeURIComponent(token.chain)}/${encodeURIComponent(token.tokenAddress)}`, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(10000) });
-          if (!response.ok) return [];
+          if (!response.ok) {
+            this.addLog(`Consulta de pares de ${token.chain} retornou HTTP ${response.status}.`, "warning", { chainId: token.chain });
+            return [];
+          }
           const data = await response.json();
           return Array.isArray(data) ? data : [];
-        } catch { return []; }
+        } catch (error) {
+          this.addLog(`Falha na descoberta de ${token.chain}: ${error.message || "erro"}.`, "warning", { chainId: token.chain });
+          return [];
+        }
       }));
-      this.addLog(`Feed de descoberta recente: ${seedList.length} tokens consultados.`, "scan");
+      this.addLog(`Feed de descoberta recente: ${seedList.length} tokens consultados (${CHAIN_IDS.map(chain => `${chain}: ${seedsByChain[chain].slice(0, 12).length}`).join(", ")}).`, "scan");
       for (const pair of [...results.flat(), ...freshPairLists.flat()]) {
-        if (!SUPPORTED_CHAINS.has(String(pair.chainId || "").toLowerCase()) || !pair.pairAddress) continue;
-        byAddress.set(`${String(pair.chainId).toLowerCase()}:${String(pair.pairAddress).toLowerCase()}`, pair);
+        const chain = String(pair.chainId || "").toLowerCase();
+        if (!SUPPORTED_CHAINS.has(chain) || !pair.pairAddress) continue;
+        byAddress.set(`${chain}:${String(pair.pairAddress).toLowerCase()}`, pair);
       }
       const pairs = [...byAddress.values()]
-        .sort((a, b) => Number(b.pairCreatedAt || 0) - Number(a.pairCreatedAt || 0))
-        .filter(pair => SUPPORTED_CHAINS.has(String(pair.chainId || "").toLowerCase()));
+        .sort((a, b) => Number(b.pairCreatedAt || 0) - Number(a.pairCreatedAt || 0));
       const seen = new Set(this.state.seenPairAddresses);
       const now = Date.now();
       this.state.pairsAnalyzed = Number(this.state.pairsAnalyzed || 0) + pairs.length;
@@ -307,36 +311,32 @@ class PaperEngine {
         if (!address) continue;
         const result = evaluatePair(pair, now);
         const candidate = {
-          id: pairKey, chainId, pairAddress: pair.pairAddress,
-          tokenAddress: result.token?.address || "",
-          tokenName: result.token?.name || "Desconhecido",
-          tokenSymbol: result.token?.symbol || "?",
-          url: pair.url || "", priceUsd: result.priceUsd,
-          liquidityUsd: result.liquidityUsd, ageMinutes: result.ageMinutes, dexId: pair.dexId || "",
-          volume24hUsd: Number(pair.volume?.h24 || 0), txns1h: result.txns1h, buys1h: result.buys1h, sells1h: result.sells1h, isFreshPair: result.isFreshPair, strategy: result.strategy,
+          id: pairKey, chainId, pairAddress: pair.pairAddress, tokenAddress: result.token?.address || "",
+          tokenName: result.token?.name || "Desconhecido", tokenSymbol: result.token?.symbol || "?",
+          url: pair.url || "", priceUsd: result.priceUsd, liquidityUsd: result.liquidityUsd, ageMinutes: result.ageMinutes,
+          dexId: pair.dexId || "", volume24hUsd: Number(pair.volume?.h24 || 0), txns1h: result.txns1h, buys1h: result.buys1h,
+          sells1h: result.sells1h, isFreshPair: result.isFreshPair, strategy: result.strategy,
           buys5m: result.buys5m, sells5m: result.sells5m, volume5mUsd: result.volume5mUsd,
           priceChange5m: result.priceChange5m, priceChange15m: result.priceChange15m, priceChange1h: result.priceChange1h,
-          buySellRatio: result.buySellRatio, buySellRatio5m: result.buySellRatio5m, entryScore: result.entryScore, approved: result.approved,
-          reasons: result.reasons, status: result.approved ? (result.isFreshPair ? "MOEDA NOVA — SINAL CONFIRMADO" : "APROVADO — MOMENTUM CONFIRMADO") : "BLOQUEADO",
-          detectedAt: candidatesById.get(pairKey)?.detectedAt || new Date(now).toISOString(),
-          lastSeenAt: new Date(now).toISOString()
+          buySellRatio: result.buySellRatio, buySellRatio5m: result.buySellRatio5m, entryScore: result.entryScore,
+          approved: result.approved, reasons: result.reasons,
+          status: result.approved ? (result.isFreshPair ? "MOEDA NOVA — SINAL CONFIRMADO" : "APROVADO — MOMENTUM CONFIRMADO") : "BLOQUEADO",
+          detectedAt: candidatesById.get(pairKey)?.detectedAt || new Date(now).toISOString(), lastSeenAt: new Date(now).toISOString()
         };
         const isNew = !seen.has(pairKey);
         if (isNew) {
           this.state.candidates.unshift(candidate);
           seen.add(pairKey);
-          if (result.approved) this.addLog(`ENTRADA QUALIFICADA (${candidate.chainId}): ${candidate.tokenSymbol} — ${candidate.strategy || (candidate.isFreshPair ? "MOEDA RECENTE" : "PAR ESTABELECIDO")}; score ${candidate.entryScore}/7; m5 ${candidate.priceChange5m}%; m15 ${candidate.priceChange15m}%; h1 ${candidate.priceChange1h}%; compras/vendas m5 ${Number(candidate.buySellRatio5m || 0).toFixed(2)}x; liquidez US${candidate.liquidityUsd.toFixed(0)}.`, 'approved', { tokenSymbol: candidate.tokenSymbol, chainId: candidate.chainId, pairAddress: candidate.pairAddress, entryScore: candidate.entryScore });
-          else if (this.state.candidates.length < 20) this.addLog(`Par bloqueado (${candidate.chainId}): ${candidate.tokenSymbol} — ${result.reasons.join('; ')}.`, 'blocked', { tokenSymbol: candidate.tokenSymbol, chainId: candidate.chainId });
+          if (result.approved) this.addLog(`ENTRADA QUALIFICADA (${candidate.chainId}): ${candidate.tokenSymbol} — ${candidate.strategy}; score ${candidate.entryScore}/7; m5 ${candidate.priceChange5m}%; m15 ${candidate.priceChange15m}%; h1 ${candidate.priceChange1h}%; compras/vendas m5 ${Number(candidate.buySellRatio5m || 0).toFixed(2)}x; liquidez US$${candidate.liquidityUsd.toFixed(0)}.`, "approved", { tokenSymbol: candidate.tokenSymbol, chainId: candidate.chainId, pairAddress: candidate.pairAddress, entryScore: candidate.entryScore });
+          else if (this.state.candidates.length < 20) this.addLog(`Par bloqueado (${candidate.chainId}): ${candidate.tokenSymbol} — ${result.reasons.join("; ")}.`, "blocked", { tokenSymbol: candidate.tokenSymbol, chainId: candidate.chainId });
         } else {
           const existing = candidatesById.get(pairKey);
           if (existing) Object.assign(existing, candidate);
         }
-        // Evaluate entry signals on every poll, not only the first time a pair is discovered.
         if (this.state.running && result.approved) this.openPaperPosition(candidate);
       }
       this.state.seenPairAddresses = [...seen].slice(-5000);
       this.state.candidates = this.state.candidates.slice(0, 500);
-      // Do not enter old candidates from historical state: only fresh, currently confirmed signals may open a position.
       await this.markToMarket();
       this.state.lastPollAt = new Date().toISOString();
       this.state.lastError = null;
@@ -359,29 +359,22 @@ class PaperEngine {
     const open = this.state.positions.filter(p => p.status === "OPEN");
     this.state.networkBalances = this.state.networkBalances || chainBalances(Number(process.env.PAPER_BALANCE_USD || 100));
     const availableBalance = Math.max(0, Number(this.state.networkBalances[chainId] ?? 100));
-    // Após o primeiro trade fechado com lucro nesta rede, compõe agressivamente no modo paper.
-    const hasProfitableTrade = this.state.trades.some(t =>
-      String(t.chainId || "bsc").toLowerCase() === chainId && Number(t.pnlUsd || 0) > 0
-    );
+    const hasProfitableTrade = this.state.trades.some(t => String(t.chainId || "bsc").toLowerCase() === chainId && Number(t.pnlUsd || 0) > 0);
     const configuredNotional = Number(networkSettings.entryUsd || 10);
-    const notional = hasProfitableTrade
-      ? Number((availableBalance * 0.99).toFixed(2))
-      : configuredNotional;
+    const notional = hasProfitableTrade ? Number((availableBalance * 0.99).toFixed(2)) : configuredNotional;
     if (open.length >= maxOpen || open.filter(p => String(p.chainId || "bsc").toLowerCase() === chainId).length >= 3 || availableBalance < notional || notional < 1) return;
     if (open.some(p => String(p.chainId || "bsc").toLowerCase() === chainId && String(p.pairAddress || "").toLowerCase() === String(candidate.pairAddress || "").toLowerCase())) return;
     if (this.state.trades.some(t => String(t.chainId || "bsc").toLowerCase() === chainId && String(t.pairAddress || "").toLowerCase() === String(candidate.pairAddress || "").toLowerCase())) return;
     if (!(candidate.priceUsd > 0)) return;
     const position = {
       id: candidate.id, chainId: candidate.chainId || "bsc", pairAddress: candidate.pairAddress, tokenAddress: candidate.tokenAddress,
-      tokenName: candidate.tokenName, tokenSymbol: candidate.tokenSymbol, url: candidate.url,
-      notionalUsd: notional, entryPriceUsd: candidate.priceUsd, lastPriceUsd: candidate.priceUsd,
-      estimatedNetPct: -numEnv("ESTIMATED_ROUNDTRIP_COST_PCT", 1.5),
-      status: "OPEN", openedAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
+      tokenName: candidate.tokenName, tokenSymbol: candidate.tokenSymbol, url: candidate.url, notionalUsd: notional,
+      entryPriceUsd: candidate.priceUsd, lastPriceUsd: candidate.priceUsd,
+      estimatedNetPct: -numEnv("ESTIMATED_ROUNDTRIP_COST_PCT", 1.5), status: "OPEN",
+      openedAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
       takeProfitPriceUsd: candidate.priceUsd * (1 + (Number(networkSettings.takeProfitNetPct ?? 4) + numEnv("ESTIMATED_ROUNDTRIP_COST_PCT", 1.5)) / 100),
-      stopLossEnabledAtEntry: Boolean(networkSettings.stopLossEnabled),
-      stopLossNetPctAtEntry: Number(networkSettings.stopLossNetPct ?? 2.5),
-      takeProfitNetPctAtEntry: Number(networkSettings.takeProfitNetPct ?? 4),
-      experimentEntryNumber: chainEntries + 1,
+      stopLossEnabledAtEntry: false, stopLossNetPctAtEntry: Number(networkSettings.stopLossNetPct ?? 2.5),
+      takeProfitNetPctAtEntry: Number(networkSettings.takeProfitNetPct ?? 4), experimentEntryNumber: chainEntries + 1,
       entryFeatures: { liquidityUsd: Number(candidate.liquidityUsd || 0), ageMinutes: candidate.ageMinutes, volume24hUsd: Number(candidate.volume24hUsd || 0), tokenSymbol: candidate.tokenSymbol, pairAddress: candidate.pairAddress, dexId: candidate.dexId || null, priceUsd: Number(candidate.priceUsd || 0), entryScore: Number(candidate.entryScore || 0), isFreshPair: Boolean(candidate.isFreshPair), strategy: candidate.strategy || null, priceChange5m: Number(candidate.priceChange5m || 0), priceChange15m: Number(candidate.priceChange15m || 0), priceChange1h: Number(candidate.priceChange1h || 0), buySellRatio: Number(candidate.buySellRatio || 0), buySellRatio5m: Number(candidate.buySellRatio5m || 0), buys5m: Number(candidate.buys5m || 0), sells5m: Number(candidate.sells5m || 0), volume5mUsd: Number(candidate.volume5mUsd || 0) }
     };
     this.state.networkBalances[chainId] = Number(this.state.networkBalances[chainId] ?? 100) - notional;
@@ -389,13 +382,12 @@ class PaperEngine {
     this.state.experiment.entriesOpened = totalEntries + 1;
     this.state.experiment.startedAt = this.state.experiment.startedAt || new Date().toISOString();
     this.state.positions.unshift(position);
-    this.addLog(`ENTRADA SIMULADA: ${candidate.tokenSymbol} a ${candidate.priceUsd}; ordem virtual US${notional.toFixed(2)}${hasProfitableTrade ? " (99% do saldo disponível após lucro anterior)" : " (valor base configurado)"}.`, 'entry', { tokenSymbol: candidate.tokenSymbol, chainId, pct: position.estimatedNetPct, notionalUsd: notional, compounding: hasProfitableTrade });
+    this.addLog(`ENTRADA SIMULADA: ${candidate.tokenSymbol} a ${candidate.priceUsd}; ordem virtual US$${notional.toFixed(2)}.`, "entry", { tokenSymbol: candidate.tokenSymbol, chainId, pct: position.estimatedNetPct, notionalUsd: notional });
   }
   async markToMarket() {
     for (const position of this.state.positions.filter(p => p.status === "OPEN")) {
       const chainId = String(position.chainId || "bsc").toLowerCase();
-      const maxHoldMs = numEnv("MAX_HOLD_MINUTES", 45) * 60000;
-      const expired = Date.now() - new Date(position.openedAt).getTime() >= maxHoldMs;
+      // Posições permanecem abertas até atingir a meta líquida; sem saída automática por tempo.
       let priceUpdated = false;
       try {
         const url = `https://api.dexscreener.com/latest/dex/pairs/${encodeURIComponent(chainId)}/${encodeURIComponent(position.pairAddress)}`;
@@ -414,25 +406,27 @@ class PaperEngine {
               priceUpdated = true;
               const settings = this.state.settings?.[chainId] || defaultSettings()[chainId];
               const target = Number(settings.takeProfitNetPct ?? 4);
-                      position.takeProfitPriceUsd = position.entryPriceUsd * (1 + (target + costPct) / 100);
+              position.takeProfitPriceUsd = position.entryPriceUsd * (1 + (target + costPct) / 100);
               if (position.estimatedNetPct >= target) {
                 this.closePosition(position, price, "ALVO_LIQUIDO");
                 continue;
               }
             }
+          } else {
+            this.addLog(`Par de ${position.tokenSymbol} não retornou preço na consulta; mantendo posição aberta.`, "warning", { tokenSymbol: position.tokenSymbol, chainId });
           }
         } else {
-          this.addLog(`Preço indisponível para ${position.tokenSymbol} na rede ${chainId}: HTTP ${response.status}.`, "warning", { tokenSymbol: position.tokenSymbol, chainId });
+          this.addLog(`Preço indisponível para ${position.tokenSymbol} na rede ${chainId}: HTTP ${response.status}; mantendo posição aberta.`, "warning", { tokenSymbol: position.tokenSymbol, chainId });
         }
       } catch (error) {
-        this.addLog(`Falha ao atualizar preço de ${position.tokenSymbol} na rede ${chainId}: ${error.message || "erro de consulta"}.`, "warning", { tokenSymbol: position.tokenSymbol, chainId });
+        this.addLog(`Falha ao atualizar preço de ${position.tokenSymbol} na rede ${chainId}: ${error.message || "erro de consulta"}; mantendo posição aberta.`, "warning", { tokenSymbol: position.tokenSymbol, chainId });
       }
-      if (expired) {
-        const lastPrice = Number(position.lastPriceUsd || position.entryPriceUsd || 0);
-        if (lastPrice > 0) {
-          if (!priceUpdated) this.addLog(`Prazo máximo atingido para ${position.tokenSymbol}; usando o último preço disponível para registrar a saída simulada.`, "warning", { tokenSymbol: position.tokenSymbol, chainId });
-          this.closePosition(position, lastPrice, priceUpdated ? "TEMPO_MAXIMO" : "TEMPO_MAXIMO_PRECO_DESATUALIZADO");
-        }
+      // Política solicitada: manter posição aberta até atingir a meta de lucro líquido.
+      // Não há stop-loss nem saída automática por tempo. Sem cotação nova, aguardar a próxima consulta.
+      if (!priceUpdated) {
+        position.exitPendingPrice = true;
+        position.exitPendingSince = position.exitPendingSince || new Date().toISOString();
+        this.addLog(`Posição ${position.tokenSymbol} permanece aberta aguardando cotação atualizada; saída somente ao atingir a meta líquida.`, "warning", { tokenSymbol: position.tokenSymbol, chainId });
       }
     }
   }
@@ -456,21 +450,21 @@ class PaperEngine {
       const winners = experimentTrades.filter(t => Number(t.pnlUsd) > 0);
       const losers = experimentTrades.filter(t => Number(t.pnlUsd) <= 0);
       const avg = arr => arr.length ? arr.reduce((sum, t) => sum + Number(t.entryFeatures?.liquidityUsd || 0), 0) / arr.length : 0;
-      this.addLog(`EXPERIMENTO FINALIZADO: ${experimentTrades.length} entradas; ${winners.length} positivas e ${losers.length} negativas. Liquidez média vencedoras: ${avg(winners).toFixed(0)}; perdedoras: ${avg(losers).toFixed(0)}.`, 'experiment');
+      this.addLog(`EXPERIMENTO FINALIZADO: ${experimentTrades.length} entradas; ${winners.length} positivas e ${losers.length} negativas. Liquidez média vencedoras: ${avg(winners).toFixed(0)}; perdedoras: ${avg(losers).toFixed(0)}.`, "experiment");
     }
-    this.addLog(`SAÍDA SIMULADA: ${position.tokenSymbol} — ${pnlUsd >= 0 ? '+' : ''}${pnlUsd.toFixed(4)} (${position.estimatedNetPct.toFixed(2)}% líquido estimado). Motivo: ${reason}.`, pnlUsd >= 0 ? 'profit' : 'loss', { tokenSymbol: position.tokenSymbol, chainId, pnlUsd, pct: position.estimatedNetPct, closeReason: reason });
+    this.addLog(`SAÍDA SIMULADA: ${position.tokenSymbol} — ${pnlUsd >= 0 ? "+" : ""}${pnlUsd.toFixed(4)} (${position.estimatedNetPct.toFixed(2)}% líquido estimado). Motivo: ${reason}.`, pnlUsd >= 0 ? "profit" : "loss", { tokenSymbol: position.tokenSymbol, chainId, pnlUsd, pct: position.estimatedNetPct, closeReason: reason });
     this.state.trades = this.state.trades.slice(0, 500);
   }
   async start() {
-    if (this.state.running && this.timer) { this.addLog('Comando iniciar recebido: monitor já estava ativo.', 'info'); await saveState(this.state); return; }
-    this.addLog('Monitor de simulação iniciado manualmente.', 'info');
+    if (this.state.running && this.timer) { this.addLog("Comando iniciar recebido: monitor já estava ativo.", "info"); await saveState(this.state); return; }
+    this.addLog("Monitor de simulação iniciado manualmente.", "info");
     this.state.running = true; this.state.startedAt = this.state.startedAt || new Date().toISOString();
     if (!this.timer) this.timer = setInterval(() => this.poll(), Math.max(15000, numEnv("POLL_INTERVAL_MS", 30000)));
     await this.poll();
     await saveState(this.state);
   }
   async stop() {
-    this.addLog('Monitor de simulação parado pelo usuário.', 'warning');
+    this.addLog("Monitor de simulação parado pelo usuário.", "warning");
     this.state.running = false;
     if (this.timer) clearInterval(this.timer);
     this.timer = null;
@@ -481,7 +475,7 @@ class PaperEngine {
     const initial = Number(process.env.PAPER_BALANCE_USD || 100);
     const savedSettings = this.state.settings || defaultSettings();
     this.state = { ...defaultState(), settings: savedSettings, paperBalanceUsd: initial * CHAIN_IDS.length, initialBalanceUsd: initial * CHAIN_IDS.length, networkBalances: chainBalances(initial), running: true, startedAt: new Date().toISOString() };
-    this.addLog("NOVO EXPERIMENTO REINICIADO: histórico simulado zerado; US$100 virtuais por rede; stop-loss desativado; após a primeira saída lucrativa em cada rede, próximas entradas usam 99% do saldo virtual disponível dessa rede.", "experiment");
+    this.addLog("NOVO EXPERIMENTO REINICIADO: histórico simulado zerado; US$100 virtuais por rede; stop-loss desativado; saídas por meta ou tempo máximo com preço atualizado.", "experiment");
     await saveState(this.state);
     this.timer = setInterval(() => this.poll(), Math.max(15000, numEnv("POLL_INTERVAL_MS", 30000)));
     this.poll().catch(error => { this.state.lastError = error.message || "Falha na consulta inicial"; saveState(this.state).catch(() => {}); });
@@ -497,11 +491,11 @@ class PaperEngine {
       const stopLossNetPct = Number(item.stopLossNetPct ?? 2.5);
       if (!Number.isFinite(entryUsd) || entryUsd < 1 || entryUsd > 1000000) throw new Error(`Entrada de ${chain} deve ficar entre US$1 e US$1.000.000.`);
       if (!Number.isFinite(takeProfitNetPct) || takeProfitNetPct < 0.1 || takeProfitNetPct > 500) throw new Error(`Meta de ganho de ${chain} deve ficar entre 0,1% e 500%.`);
+      if (!Number.isFinite(stopLossNetPct) || stopLossNetPct < 0.1 || stopLossNetPct > 100) throw new Error(`Limite de prejuízo de ${chain} deve ficar entre 0,1% e 100%.`);
       next[chain] = { entryUsd, takeProfitNetPct, stopLossEnabled: false, stopLossNetPct };
     }
     this.state.settings = next;
     this.state.settingsUpdatedAt = new Date().toISOString();
-    // Apply the selected stop-loss toggle immediately to already-open paper positions.
     for (const position of this.state.positions.filter(p => p.status === "OPEN")) {
       const chain = String(position.chainId || "bsc").toLowerCase();
       const setting = next[chain] || defaultSettings()[chain];
@@ -509,8 +503,7 @@ class PaperEngine {
       position.stopLossNetPctAtEntry = Number(setting.stopLossNetPct ?? 2.5);
       position.takeProfitNetPctAtEntry = Number(setting.takeProfitNetPct ?? 4);
     }
-    const stopSummary = "Stop-loss desativado permanentemente; saídas por meta de lucro ou tempo máximo.";
-    this.addLog(`Configurações salvas no servidor. ${stopSummary}. Aplicadas também às posições virtuais abertas.`, "settings");
+    this.addLog("Configurações salvas no servidor. Stop-loss permanentemente desativado; saídas apenas por meta líquida ou tempo máximo após cotação atualizada.", "settings");
     await saveState(this.state);
     return this.state.settings;
   }
@@ -518,10 +511,9 @@ class PaperEngine {
     const positions = this.state.positions.filter(p => p.status === "OPEN");
     const realizedPnlUsd = this.state.trades.reduce((sum, t) => sum + Number(t.pnlUsd || 0), 0);
     return { ...this.state, positions, openPositionsCount: positions.length,
-      closedTradesCount: this.state.trades.length, experiment: { targetEntries: 60, entriesOpened: 0, completed: false, ...(this.state.experiment || {}) }, realizedPnlUsd: Number(realizedPnlUsd.toFixed(4)),
-      settings: { ...defaultSettings(), ...(this.state.settings || {}) },
-      settingsUpdatedAt: this.state.settingsUpdatedAt || null,
-      engineBuild: "config-guard-2026-10-09",
+      closedTradesCount: this.state.trades.length, experiment: { targetEntries: 60, entriesOpened: 0, completed: false, ...(this.state.experiment || {}) },
+      realizedPnlUsd: Number(realizedPnlUsd.toFixed(4)), settings: { ...defaultSettings(), ...(this.state.settings || {}) },
+      settingsUpdatedAt: this.state.settingsUpdatedAt || null, engineBuild: "solana-fair-feed-no-stale-exit-2026-10-10",
       targetNetPct: numEnv("TAKE_PROFIT_NET_PCT", 4), mode: "PAPER" };
   }
 }
