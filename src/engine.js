@@ -387,8 +387,7 @@ class PaperEngine {
   async markToMarket() {
     for (const position of this.state.positions.filter(p => p.status === "OPEN")) {
       const chainId = String(position.chainId || "bsc").toLowerCase();
-      const maxHoldMs = numEnv("MAX_HOLD_MINUTES", 45) * 60000;
-      const expired = Date.now() - new Date(position.openedAt).getTime() >= maxHoldMs;
+      // Posições permanecem abertas até atingir a meta líquida; sem saída automática por tempo.
       let priceUpdated = false;
       try {
         const url = `https://api.dexscreener.com/latest/dex/pairs/${encodeURIComponent(chainId)}/${encodeURIComponent(position.pairAddress)}`;
