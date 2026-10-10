@@ -424,11 +424,12 @@ class PaperEngine {
       }
       // A failed/stale quote must never be turned into an exit price. Time exits only occur
       // after a fresh price was received in this polling cycle.
-      if (expired && priceUpdated) this.closePosition(position, Number(position.lastPriceUsd), "TEMPO_MAXIMO");
-      else if (expired && !priceUpdated) {
+      // Política solicitada: não encerrar por tempo. Permanecer aberta até a meta líquida.
+      // Caso a cotação esteja indisponível, conservar a posição e aguardar uma nova consulta.
+      if (expired && !priceUpdated) {
         position.exitPendingPrice = true;
         position.exitPendingSince = position.exitPendingSince || new Date().toISOString();
-        this.addLog(`Prazo máximo atingido para ${position.tokenSymbol}, mas preço atualizado indisponível; saída pendente até nova cotação.`, "warning", { tokenSymbol: position.tokenSymbol, chainId });
+        this.addLog(`Posição ${position.tokenSymbol} continua aberta: meta ainda não atingida e cotação atual indisponível.`, "warning", { tokenSymbol: position.tokenSymbol, chainId });
       }
     }
   }
