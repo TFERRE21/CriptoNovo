@@ -233,6 +233,8 @@ class PaperEngine {
   async poll() {
     if (this.polling) return;
     this.polling = true;
+    this.state.scanStartedAt = new Date().toISOString();
+    this.addLog("Ciclo de varredura iniciado; consultando fontes de mercado.", "scan");
     try {
       const queries = [
         "WBNB USDT", "WBNB USDC", "BNB", "PancakeSwap", "WETH USDC", "WETH USDT", "USDC WETH", "USDT WETH",
@@ -243,7 +245,7 @@ class PaperEngine {
       const results = await Promise.all(queries.map(async q => {
         try {
           const response = await fetch(`https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(q)}`, {
-            headers: { accept: "application/json" }, signal: AbortSignal.timeout(12000)
+            headers: { accept: "application/json" }, signal: AbortSignal.timeout(6000)
           });
           if (!response.ok) {
             this.addLog(`Busca DexScreener (${q}) retornou HTTP ${response.status}; demais consultas continuarão.`, "warning");
@@ -349,8 +351,10 @@ class PaperEngine {
       await this.markToMarket();
       this.state.lastPollAt = new Date().toISOString();
       this.state.lastError = null;
+      this.state.lastScanResult = `${pairs.length} pares encontrados`;
     } catch (error) {
       this.state.lastError = error.message || "Erro desconhecido";
+      this.state.lastScanResult = "Falha na varredura; nova tentativa no próximo ciclo";
       this.addLog(`Erro na consulta: ${this.state.lastError}; o monitor continuará tentando no próximo ciclo.`, "error");
     } finally {
       this.polling = false;
