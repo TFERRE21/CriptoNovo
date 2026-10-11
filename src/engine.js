@@ -573,7 +573,20 @@ class PaperEngine {
               priceUpdated = true;
               const settings = this.state.settings?.[chainId] || defaultSettings()[chainId];
               const target = Number(settings.takeProfitNetPct ?? 4);
-                      position.takeProfitPriceUsd = position.entryPriceUsd * (1 + (target + costPct) / 100);
+              position.takeProfitPriceUsd = position.entryPriceUsd * (1 + (target + costPct) / 100);
+              // Alvo extraordinário: encerrar a posição simulada quando seu valor total estimado chegar a R$ 100 mil.
+              const usdBrlRate = Math.max(0.01, numEnv("USD_BRL_RATE", 5.10));
+              const exitTargetBrl = Math.max(1000, numEnv("PAPER_EXIT_TARGET_BRL", 100000));
+              const positionValueUsd = Number(position.notionalUsd || 0) * (price / Math.max(Number(position.entryPriceUsd || 0), 1e-18));
+              const positionValueBrl = positionValueUsd * usdBrlRate;
+              position.currentValueUsd = Number(positionValueUsd.toFixed(6));
+              position.currentValueBrl = Number(positionValueBrl.toFixed(2));
+              position.exitTargetBrl = exitTargetBrl;
+              if (positionValueBrl >= exitTargetBrl) {
+                this.closePosition(position, price, "ALVO_VALOR_R$100_MIL");
+                this.addLog(`ALVO DE SAÍDA ATINGIDO: ${position.tokenSymbol}; valor estimado R${positionValueBrl.toFixed(2)}, alvo R${exitTargetBrl.toFixed(2)}, câmbio de referência R${usdBrlRate.toFixed(2)}/US$.`, "profit", {tokenSymbol: position.tokenSymbol, chainId, positionValueBrl, exitTargetBrl, usdBrlRate});
+                continue;
+              }
               if (position.estimatedNetPct >= target) {
                 this.closePosition(position, price, "ALVO_LIQUIDO");
                 continue;
