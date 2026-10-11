@@ -525,7 +525,7 @@ class PaperEngine {
   snapshot() {
     const positions = this.state.positions.filter(p => p.status === "OPEN");
     const realizedPnlUsd = this.state.trades.reduce((sum, t) => sum + Number(t.pnlUsd || 0), 0);
-    return { ...this.state, positions, openPositionsCount: positions.length,
+    return { ...this.state, polling: this.polling, positions, openPositionsCount: positions.length,
       closedTradesCount: this.state.trades.length, experiment: { targetEntries: 60, entriesOpened: 0, completed: false, ...(this.state.experiment || {}) },
       realizedPnlUsd: Number(realizedPnlUsd.toFixed(4)), settings: { ...defaultSettings(), ...(this.state.settings || {}) },
       settingsUpdatedAt: this.state.settingsUpdatedAt || null, engineBuild: "solana-fair-feed-no-stale-exit-2026-10-10",
