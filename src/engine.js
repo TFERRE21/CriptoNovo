@@ -410,8 +410,6 @@ class PaperEngine {
           result.priceChange5m <= numEnv("WINNER_PATTERN_MAX_PRICE_CHANGE_5M_PCT", 20);
         // Gate definitivo: o motor base, o padrão vencedor e o score mínimo precisam aprovar.
         // O status visual/retorno do token nunca pode, sozinho, disparar uma entrada.
-        const pairWebsites = Array.isArray(pair?.info?.websites) ? pair.info.websites : [];
-        const hasOfficialWebsiteForEntry = pairWebsites.some(site => /^https?:\/\//i.test(String(site?.url || "")));
         const entryAllowed =
           result.approved === true &&
           Array.isArray(result.reasons) && result.reasons.length === 0 &&
