@@ -412,8 +412,11 @@ class PaperEngine {
         // O status visual/retorno do token nunca pode, sozinho, disparar uma entrada.
         const entryAllowed =
           result.approved === true &&
+          Array.isArray(result.reasons) && result.reasons.length === 0 &&
           winnerPatternCompatible === true &&
-          Number(result.entryScore || 0) >= 3;
+          Number(result.entryScore || 0) >= 3 &&
+          Number(result.ageMinutes) >= 0 &&
+          Number(result.ageMinutes) <= 1440;
         const candidate = {
           id: pairKey, chainId, pairAddress: pair.pairAddress,
           tokenAddress: result.token?.address || "",
@@ -479,6 +482,8 @@ class PaperEngine {
       candidate?.winnerPatternCompatible === true &&
       Number(candidate?.entryScore || 0) >= 3 &&
       Array.isArray(candidate?.reasons) && candidate.reasons.length === 0 &&
+      Number(candidate?.ageMinutes) >= 0 &&
+      Number(candidate?.ageMinutes) <= 1440 &&
       /^https?:\/\//i.test(candidateWebsite) &&
       candidateLiquidity >= numEnv("WINNER_PATTERN_MIN_LIQUIDITY_USD", 15000) &&
       candidateVolume24h >= numEnv("WINNER_PATTERN_MIN_VOLUME_24H_USD", 50000) &&
