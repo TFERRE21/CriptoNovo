@@ -67,6 +67,19 @@ main>section.grid:not(#earlyProjectTotals){display:grid!important}
 #networkCards{display:none!important}
 #networkCards{visibility:hidden!important}
 #settingsPanel .settings-grid{grid-template-columns:1fr!important}
+
+/* Visão simplificada solicitada: mostrar somente os cards de resultado e a lista de projetos novos */
+body>main>section#positionsPanel,
+body>main>section.panel:not(#earlyProjectsPanel),
+body>main>section.grid:not(#earlyProjectTotals),
+body>main>div.panel,
+body>main>div.grid,
+body>main>section:not(#earlyProjectTotals):not(#earlyProjectsPanel),
+body>main>.layout,
+body>main>.columns,
+body>main>.right-stack{display:none!important}
+body>main>section#earlyProjectTotals{display:grid!important}
+body>main>section#earlyProjectsPanel{display:block!important}
 </style></head><body><main>
 <header><div class="brand"><div class="logo">C</div><div><h1>CriptoNovo</h1><p>Monitoramento de projetos novos</p></div></div><div class="actions"><button id="refresh">Atualizar</button><button id="start" class="primary">Iniciar simulação</button><button id="reset" class="danger">Zerar e reiniciar teste</button><button id="stop" class="danger">Parar</button><button id="testPebble" type="button" style="display:inline-flex!important;visibility:visible!important;opacity:1!important;background:#16c79a!important;color:#071b19!important;border:2px solid #16c79a!important;padding:10px 14px!important;font-weight:800!important;min-height:40px!important;border-radius:8px!important">▶ Testar PEBBLE · US$ 10</button></div></header>
 <div class="notice"><strong>Modo simulação:</strong> não envia transações nem acessa carteiras. “Aprovado” significa apenas que passou pelos filtros básicos; não representa garantia de segurança ou lucro.</div>
