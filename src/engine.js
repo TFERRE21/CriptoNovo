@@ -525,7 +525,7 @@ class PaperEngine {
       stopLossNetPctAtEntry: Number(networkSettings.stopLossNetPct ?? 2.5),
       takeProfitNetPctAtEntry: Number(networkSettings.takeProfitNetPct ?? 4),
       experimentEntryNumber: chainEntries + 1,
-      entryFeatures: { liquidityUsd: Number(candidate.liquidityUsd || 0), ageMinutes: candidate.ageMinutes, volume24hUsd: Number(candidate.volume24hUsd || 0), tokenSymbol: candidate.tokenSymbol, pairAddress: candidate.pairAddress, dexId: candidate.dexId || null, priceUsd: Number(candidate.priceUsd || 0), entryScore: Number(candidate.entryScore || 0), isFreshPair: Boolean(candidate.isFreshPair), strategy: candidate.strategy || null, priceChange5m: Number(candidate.priceChange5m || 0), priceChange15m: Number(candidate.priceChange15m || 0), priceChange1h: Number(candidate.priceChange1h || 0), buySellRatio: Number(candidate.buySellRatio || 0), buySellRatio5m: Number(candidate.buySellRatio5m || 0), buys5m: Number(candidate.buys5m || 0), sells5m: Number(candidate.sells5m || 0), volume5mUsd: Number(candidate.volume5mUsd || 0) }
+      strategyApprovedAtEntry: true, officialWebsite: String(candidate.officialWebsite || ""),\n      entryFeatures: { officialWebsite: String(candidate.officialWebsite || ""), liquidityUsd: Number(candidate.liquidityUsd || 0), ageMinutes: candidate.ageMinutes, volume24hUsd: Number(candidate.volume24hUsd || 0), tokenSymbol: candidate.tokenSymbol, pairAddress: candidate.pairAddress, dexId: candidate.dexId || null, priceUsd: Number(candidate.priceUsd || 0), entryScore: Number(candidate.entryScore || 0), isFreshPair: Boolean(candidate.isFreshPair), strategy: candidate.strategy || null, priceChange5m: Number(candidate.priceChange5m || 0), priceChange15m: Number(candidate.priceChange15m || 0), priceChange1h: Number(candidate.priceChange1h || 0), buySellRatio: Number(candidate.buySellRatio || 0), buySellRatio5m: Number(candidate.buySellRatio5m || 0), buys5m: Number(candidate.buys5m || 0), sells5m: Number(candidate.sells5m || 0), volume5mUsd: Number(candidate.volume5mUsd || 0) }
     };
     this.state.networkBalances[chainId] = Number(this.state.networkBalances[chainId] ?? 100) - notional;
     this.state.paperBalanceUsd = Object.values(this.state.networkBalances).reduce((sum, value) => sum + Number(value || 0), 0);
@@ -537,6 +537,21 @@ class PaperEngine {
   async markToMarket() {
     for (const position of this.state.positions.filter(p => p.status === "OPEN")) {
       const chainId = String(position.chainId || "bsc").toLowerCase();
+      // Migração de segurança: posições simuladas antigas sem prova de compatibilidade não podem continuar como entradas válidas.
+      const f = position.entryFeatures || {};
+      const legacyEntryCompatible =
+        /^https?:\/\//i.test(String(position.officialWebsite || f.officialWebsite || "")) &&
+        Number(f.liquidityUsd || 0) >= numEnv("WINNER_PATTERN_MIN_LIQUIDITY_USD", 15000) &&
+        Number(f.volume24hUsd || 0) >= numEnv("WINNER_PATTERN_MIN_VOLUME_24H_USD", 50000) &&
+        Number(f.buys5m || 0) + Number(f.sells5m || 0) >= numEnv("WINNER_PATTERN_MIN_TXNS_5M", 4) &&
+        Number(f.buys5m || 0) > Number(f.sells5m || 0) &&
+        Number(f.priceChange5m || 0) > 0 &&
+        Number(f.priceChange5m || 0) <= numEnv("WINNER_PATTERN_MAX_PRICE_CHANGE_5M_PCT", 20);
+      if (position.strategyApprovedAtEntry !== true && !legacyEntryCompatible) {
+        this.closePosition(position, Number(position.lastPriceUsd || position.entryPriceUsd || 0), "ENCERRADA_FILTRO_ESTRATEGIA");
+        this.addLog(`POSIÇÃO SIMULADA ENCERRADA POR SEGURANÇA: ${position.tokenSymbol} não tem comprovação de compatibilidade na entrada.`, "blocked", {tokenSymbol: position.tokenSymbol, chainId, pairAddress: position.pairAddress});
+        continue;
+      }
       // Nenhuma rede usa stop-loss nem encerramento por tempo: posição virtual fica aberta até a meta de lucro.
       const expired = false;
       let priceUpdated = false;
