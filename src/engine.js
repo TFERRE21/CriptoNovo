@@ -418,15 +418,6 @@ class PaperEngine {
         // Um projeto fora deste padrão nunca pode abrir posição, mesmo que outro filtro aprove o par.
         const officialSitesForEntry = Array.isArray(pair.info?.websites) ? pair.info.websites : [];
         const hasOfficialWebsiteForEntry = officialSitesForEntry.some(site => /^https?:\/\//i.test(String(site?.url || "")));
-        // Para pares recém-lançados, validar fluxo recente em vez de exigir volume acumulado de 24h.
-        const freshLiquidityFloor = chainId === "ethereum" ? numEnv("MIN_FRESH_LIQUIDITY_USD", 1800)
-          : chainId === "bsc" ? numEnv("BSC_MIN_LIQUIDITY_USD", 1500)
-          : numEnv("SOL_MIN_LIQUIDITY_USD", 2000);
-        const freshVolume5mFloor = numEnv("MIN_FRESH_VOLUME_5M_USD", 500);
-        const freshMaxMove5m = chainId === "ethereum" ? numEnv("MAX_FRESH_PRICE_CHANGE_5M_PCT", 12)
-          : chainId === "bsc" ? numEnv("BSC_MAX_PRICE_CHANGE_5M_PCT", 15)
-          : numEnv("SOL_MAX_PRICE_CHANGE_5M_PCT", 20);
-        const freshProject = result.isFreshPair === true && Number(result.ageMinutes) >= 0 && Number(result.ageMinutes) <= 360;
         // Estratégia anterior restaurada: critérios por estágio, score mínimo 3 e site oficial.
         const freshLiquidityFloor = chainId === "ethereum" ? numEnv("MIN_FRESH_LIQUIDITY_USD", 1800)
           : chainId === "bsc" ? numEnv("BSC_MIN_LIQUIDITY_USD", 1500)
@@ -496,7 +487,7 @@ class PaperEngine {
           buySellRatio: result.buySellRatio, buySellRatio5m: result.buySellRatio5m, entryScore: result.entryScore, entryScorePct: result.entryScorePct,
           strategySegment,
           winnerPatternCompatible, approved: entryAllowed,
-          reasons: [...entryReasons],
+          reasons: [...result.reasons, ...(!winnerPatternCompatible ? ["Padrão vencedor não confirmado — entrada bloqueada"] : [])],
           status: entryAllowed ? (result.isFreshPair ? "MOEDA NOVA — SINAL CONFIRMADO" : "APROVADO — MOMENTUM CONFIRMADO") : "BLOQUEADO",
           detectedAt: candidatesById.get(pairKey)?.detectedAt || new Date(now).toISOString(),
           lastSeenAt: new Date(now).toISOString()
