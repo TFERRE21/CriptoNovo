@@ -666,7 +666,8 @@ class PaperEngine {
     const candidate = this.state.candidates.find(c => String(c.id) === String(candidateId));
     if (!candidate) throw new Error("Projeto não encontrado no monitor.");
     const spikePct = Number(candidate.priceChange1h || 0);
-    if (spikePct < 100) throw new Error("Este teste manual é exclusivo para o padrão de impulso explosivo (variação de 1h >= 100%).");
+    const isPebblePattern = /pebble/i.test(String(candidate.tokenSymbol || "") + " " + String(candidate.tokenName || ""));
+    if (spikePct < 100 && !isPebblePattern) throw new Error("Este teste manual é exclusivo para PEBBLE ou para o padrão de impulso explosivo (variação de 1h >= 100%).");
     const price = Number(candidate.priceUsd || 0);
     if (!(price > 0)) throw new Error("Preço atual indisponível.");
     const chainId = String(candidate.chainId || "bsc").toLowerCase();
