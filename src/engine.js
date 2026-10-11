@@ -354,7 +354,7 @@ class PaperEngine {
           seeds.set(key, previous);
         }
       }
-      const seedList = [...seeds.values()].slice(0, 12);
+      const seedList = [...seeds.values()].slice(0, 50);
       this.addLog(`Feeds DexScreener: perfis ${profiles.length}, boosts recentes ${boosts.length}, top boosts ${topBoosts.length}, anúncios ${ads.length}; ${seedList.length} tokens únicos.`, "scan");
       const freshPairLists = await Promise.all(seedList.map(async token => {
         try {
@@ -365,14 +365,20 @@ class PaperEngine {
         } catch { return []; }
       }));
       this.addLog(`Pares atualizados via token-pairs/v1 para ${seedList.length} tokens descobertos nos feeds recentes.`, "scan");
-      for (const pair of [...results.flat(), ...freshPairLists.flat(), ...geckoPools]) {
+      // GeckoTerminal amplia a descoberta; DexScreener vem depois para preservar metadados oficiais do par quando disponíveis.
+      for (const pair of [...geckoPools, ...results.flat(), ...freshPairLists.flat()]) {
         if (!SUPPORTED_CHAINS.has(String(pair.chainId || "").toLowerCase()) || !pair.pairAddress) continue;
         byAddress.set(`${String(pair.chainId).toLowerCase()}:${String(pair.pairAddress).toLowerCase()}`, pair);
       }
       // Analisa no máximo 50 projetos únicos por ciclo, priorizando pares mais recentes.
       const pairs = [...byAddress.values()]
-        .sort((a, b) => Number(b.pairCreatedAt || 0) - Number(a.pairCreatedAt || 0))
         .filter(pair => SUPPORTED_CHAINS.has(String(pair.chainId || "").toLowerCase()))
+        // Prioriza os pares com site oficial verificável para a lista, sem alterar os filtros de compra.
+        .sort((a, b) => {
+          const siteA = Array.isArray(a.info?.websites) && a.info.websites.some(site => /^https?:\/\//i.test(String(site?.url || ""))) ? 1 : 0;
+          const siteB = Array.isArray(b.info?.websites) && b.info.websites.some(site => /^https?:\/\//i.test(String(site?.url || ""))) ? 1 : 0;
+          return siteB - siteA || Number(b.pairCreatedAt || 0) - Number(a.pairCreatedAt || 0);
+        })
         .slice(0, 50);
       const seen = new Set(this.state.seenPairAddresses);
       const now = Date.now();
@@ -625,7 +631,7 @@ class PaperEngine {
       closedTradesCount: this.state.trades.length, experiment: { targetEntries: 60, entriesOpened: 0, completed: false, ...(this.state.experiment || {}) }, realizedPnlUsd: Number(realizedPnlUsd.toFixed(4)),
       settings: { ...defaultSettings(), ...(this.state.settings || {}) },
       settingsUpdatedAt: this.state.settingsUpdatedAt || null,
-      engineBuild: "winner-pattern-entry-gate-v2-2026-10-10",
+      engineBuild: "winner-pattern-discovery-v3-2026-10-10",
       targetNetPct: numEnv("TAKE_PROFIT_NET_PCT", 4), mode: "PAPER" };
   }
 }
