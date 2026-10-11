@@ -393,16 +393,30 @@ class PaperEngine {
         // Um projeto fora deste padrão nunca pode abrir posição, mesmo que outro filtro aprove o par.
         const officialSitesForEntry = Array.isArray(pair.info?.websites) ? pair.info.websites : [];
         const hasOfficialWebsiteForEntry = officialSitesForEntry.some(site => /^https?:\/\//i.test(String(site?.url || "")));
+        // Para pares recém-lançados, validar fluxo recente em vez de exigir volume acumulado de 24h.
+        const freshLiquidityFloor = chainId === "ethereum" ? numEnv("MIN_FRESH_LIQUIDITY_USD", 1800)
+          : chainId === "bsc" ? numEnv("BSC_MIN_LIQUIDITY_USD", 1500)
+          : numEnv("SOL_MIN_LIQUIDITY_USD", 2000);
+        const freshVolume5mFloor = numEnv("MIN_FRESH_VOLUME_5M_USD", 500);
+        const freshMaxMove5m = chainId === "ethereum" ? numEnv("MAX_FRESH_PRICE_CHANGE_5M_PCT", 12)
+          : chainId === "bsc" ? numEnv("BSC_MAX_PRICE_CHANGE_5M_PCT", 15)
+          : numEnv("SOL_MAX_PRICE_CHANGE_5M_PCT", 20);
+        const freshProject = result.isFreshPair === true && Number(result.ageMinutes) >= 0 && Number(result.ageMinutes) <= 360;
         const winnerPatternCompatible =
           hasOfficialWebsiteForEntry &&
-          result.liquidityUsd >= numEnv("WINNER_PATTERN_MIN_LIQUIDITY_USD", 15000) &&
-          Number(pair.volume?.h24 || 0) >= numEnv("WINNER_PATTERN_MIN_VOLUME_24H_USD", 50000) &&
-          result.buys5m + result.sells5m >= numEnv("WINNER_PATTERN_MIN_TXNS_5M", 4) &&
-          result.buys5m > result.sells5m &&
-          result.priceChange5m > 0 &&
-          result.priceChange5m <= numEnv("WINNER_PATTERN_MAX_PRICE_CHANGE_5M_PCT", 20);
-        // Gate definitivo: o motor base, o padrão vencedor e o score mínimo precisam aprovar.
-        // O status visual/retorno do token nunca pode, sozinho, disparar uma entrada.
+          (freshProject
+            ? result.liquidityUsd >= freshLiquidityFloor &&
+              Number(result.volume5mUsd || 0) >= freshVolume5mFloor &&
+              result.buys5m + result.sells5m >= numEnv("WINNER_PATTERN_MIN_TXNS_5M", 4) &&
+              result.buys5m > result.sells5m &&
+              result.priceChange5m > 0 &&
+              result.priceChange5m <= freshMaxMove5m
+            : result.liquidityUsd >= numEnv("WINNER_PATTERN_MIN_LIQUIDITY_USD", 15000) &&
+              Number(pair.volume?.h24 || 0) >= numEnv("WINNER_PATTERN_MIN_VOLUME_24H_USD", 50000) &&
+              result.buys5m + result.sells5m >= numEnv("WINNER_PATTERN_MIN_TXNS_5M", 4) &&
+              result.buys5m > result.sells5m &&
+              result.priceChange5m > 0 &&
+              result.priceChange5m <= numEnv("WINNER_PATTERN_MAX_PRICE_CHANGE_5M_PCT", 20));
         const entryAllowed =
           result.approved === true &&
           Array.isArray(result.reasons) && result.reasons.length === 0 &&
@@ -411,18 +425,21 @@ class PaperEngine {
           Number(result.ageMinutes) >= 0 &&
           Number(result.ageMinutes) <= 1440 &&
           hasOfficialWebsiteForEntry &&
-          Number(result.liquidityUsd || 0) >= 15000 &&
-          Number(result.volume24hUsd || 0) >= 50000 &&
+          (freshProject
+            ? Number(result.liquidityUsd || 0) >= freshLiquidityFloor &&
+              Number(result.volume5mUsd || 0) >= freshVolume5mFloor
+            : Number(result.liquidityUsd || 0) >= numEnv("WINNER_PATTERN_MIN_LIQUIDITY_USD", 15000) &&
+              Number(result.volume24hUsd || 0) >= numEnv("WINNER_PATTERN_MIN_VOLUME_24H_USD", 50000)) &&
           Number(result.buys5m || 0) + Number(result.sells5m || 0) >= 4 &&
           Number(result.buys5m || 0) > Number(result.sells5m || 0) &&
           Number(result.priceChange5m || 0) > 0 &&
-          Number(result.priceChange5m || 0) <= 20;
+          Number(result.priceChange5m || 0) <= freshMaxMove5m;
         const totalVariationPct = Number(result.priceChange1h || 0);
         const isExtremePump = totalVariationPct >= 1000;
         const isMicroLiquidity = Number(result.liquidityUsd || 0) < 1500 || Number(result.volume24hUsd || 0) < 5000;
         const strategySegment = isExtremePump && isMicroLiquidity
           ? "PUMP_EXTREMO_BAIXA_LIQUIDEZ"
-          : result.liquidityUsd >= 15000 && result.volume24hUsd >= 50000 && result.buys5m > result.sells5m
+          : entryAllowed
             ? "MOMENTUM_COM_LIQUIDEZ"
             : result.isFreshPair
               ? "LANCAMENTO_EM_OBSERVACAO"
@@ -497,12 +514,16 @@ class PaperEngine {
       Number(candidate?.ageMinutes) >= 0 &&
       Number(candidate?.ageMinutes) <= 1440 &&
       /^https?:\/\//i.test(candidateWebsite) &&
-      candidateLiquidity >= numEnv("WINNER_PATTERN_MIN_LIQUIDITY_USD", 15000) &&
-      candidateVolume24h >= numEnv("WINNER_PATTERN_MIN_VOLUME_24H_USD", 50000) &&
+      (candidate?.isFreshPair === true
+        ? candidateLiquidity >= (String(candidate.chainId).toLowerCase() === "ethereum" ? numEnv("MIN_FRESH_LIQUIDITY_USD", 1800) : String(candidate.chainId).toLowerCase() === "bsc" ? numEnv("BSC_MIN_LIQUIDITY_USD", 1500) : numEnv("SOL_MIN_LIQUIDITY_USD", 2000)) &&
+          Number(candidate.volume5mUsd || 0) >= numEnv("MIN_FRESH_VOLUME_5M_USD", 500) &&
+          candidateM5 <= (String(candidate.chainId).toLowerCase() === "ethereum" ? numEnv("MAX_FRESH_PRICE_CHANGE_5M_PCT", 12) : String(candidate.chainId).toLowerCase() === "bsc" ? numEnv("BSC_MAX_PRICE_CHANGE_5M_PCT", 15) : numEnv("SOL_MAX_PRICE_CHANGE_5M_PCT", 20))
+        : candidateLiquidity >= numEnv("WINNER_PATTERN_MIN_LIQUIDITY_USD", 15000) &&
+          candidateVolume24h >= numEnv("WINNER_PATTERN_MIN_VOLUME_24H_USD", 50000) &&
+          candidateM5 <= numEnv("WINNER_PATTERN_MAX_PRICE_CHANGE_5M_PCT", 20)) &&
       candidateBuys5m + candidateSells5m >= numEnv("WINNER_PATTERN_MIN_TXNS_5M", 4) &&
       candidateBuys5m > candidateSells5m &&
-      candidateM5 > 0 &&
-      candidateM5 <= numEnv("WINNER_PATTERN_MAX_PRICE_CHANGE_5M_PCT", 20);
+      candidateM5 > 0;
     if (!strictWinnerGate) {
       this.addLog(`ENTRADA BLOQUEADA: ${candidate?.tokenSymbol || "projeto"} não passou por TODOS os critérios da estratégia no momento da entrada.`, "blocked", {
         tokenSymbol: candidate?.tokenSymbol || "?",
