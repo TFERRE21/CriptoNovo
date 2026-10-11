@@ -410,13 +410,22 @@ class PaperEngine {
           result.priceChange5m <= numEnv("WINNER_PATTERN_MAX_PRICE_CHANGE_5M_PCT", 20);
         // Gate definitivo: o motor base, o padrão vencedor e o score mínimo precisam aprovar.
         // O status visual/retorno do token nunca pode, sozinho, disparar uma entrada.
+        const pairWebsites = Array.isArray(pair?.info?.websites) ? pair.info.websites : [];
+        const hasOfficialWebsiteForEntry = pairWebsites.some(site => /^https?:\/\//i.test(String(site?.url || "")));
         const entryAllowed =
           result.approved === true &&
           Array.isArray(result.reasons) && result.reasons.length === 0 &&
           winnerPatternCompatible === true &&
           Number(result.entryScore || 0) >= 3 &&
           Number(result.ageMinutes) >= 0 &&
-          Number(result.ageMinutes) <= 1440;
+          Number(result.ageMinutes) <= 1440 &&
+          hasOfficialWebsiteForEntry &&
+          Number(result.liquidityUsd || 0) >= 15000 &&
+          Number(result.volume24hUsd || 0) >= 50000 &&
+          Number(result.buys5m || 0) + Number(result.sells5m || 0) >= 4 &&
+          Number(result.buys5m || 0) > Number(result.sells5m || 0) &&
+          Number(result.priceChange5m || 0) > 0 &&
+          Number(result.priceChange5m || 0) <= 20;
         const totalVariationPct = Number(result.priceChange1h || 0);
         const isExtremePump = totalVariationPct >= 1000;
         const isMicroLiquidity = Number(result.liquidityUsd || 0) < 1500 || Number(result.volume24hUsd || 0) < 5000;
