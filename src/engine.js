@@ -216,6 +216,9 @@ function evaluatePair(pair, now = Date.now()) {
   if (excludedAssets.has(selectedSymbol) || excludedAssets.has(selectedName)) reasons.push("Ativo-base estável ou wrapped excluído da estratégia");
   if (!selected.token?.address || !(selected.priceUsd > 0)) reasons.push("Preço ou token negociável indisponível");
   if (String(pair?.dexId || "").length === 0) reasons.push("DEX não identificada");
+  const officialSites = Array.isArray(pair?.info?.websites) ? pair.info.websites : [];
+  const hasOfficialWebsite = officialSites.some(site => /^https?:\/\//i.test(String(site?.url || "")));
+  if (!hasOfficialWebsite) reasons.push("Sem site oficial verificável — entrada bloqueada");
   return { approved: reasons.length === 0, reasons, entryScore, strategy, isFreshPair, liquidityUsd: liquidity, volume24hUsd: volume24h, txns1h, buys1h, sells1h,
     buys5m, sells5m, volume5mUsd: volume5m, priceChange5m, priceChange15m, priceChange1h,
     buySellRatio: buys1h / Math.max(sells1h, 1), buySellRatio5m,
@@ -272,6 +275,53 @@ class PaperEngine {
         const data = await response.json();
         return Array.isArray(data.pairs) ? data.pairs : [];
       }));
+      // Fonte adicional de descoberta on-chain: GeckoTerminal, independente dos feeds DexScreener.
+      const fetchGeckoPools = async network => {
+        try {
+          const response = await fetch(`https://api.geckoterminal.com/api/v2/networks/${network}/new_pools`, {
+            headers: { accept: "application/json;version=20230302" }, signal: AbortSignal.timeout(10000)
+          });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const data = await response.json();
+          return (Array.isArray(data.data) ? data.data : []).map(pool => {
+            const a = pool.attributes || {};
+            const rel = pool.relationships || {};
+            const baseRef = rel.base_token?.data?.id || "";
+            const quoteRef = rel.quote_token?.data?.id || "";
+            const baseAddress = String(a.base_token_address || baseRef.split("_").slice(1).join("_"));
+            const quoteAddress = String(a.quote_token_address || quoteRef.split("_").slice(1).join("_"));
+            const baseName = String(a.name || "Projeto novo").split(" / ")[0];
+            const baseSymbol = String(a.name || "?").split(" / ")[0];
+            const created = Date.parse(a.pool_created_at || "");
+            const tx = a.transactions || {};
+            const h24tx = tx.h24 || {};
+            const m5tx = tx.m5 || {};
+            const h1tx = tx.h1 || {};
+            const infoWebsites = Array.isArray(a.websites) ? a.websites.map(url => ({url})) : [];
+            return {
+              chainId: network === "bsc" ? "bsc" : network === "eth" ? "ethereum" : "solana",
+              pairAddress: a.address || String(pool.id || "").split("_").slice(1).join("_"),
+              baseToken: { address: baseAddress, name: baseName, symbol: baseSymbol },
+              quoteToken: { address: quoteAddress, name: "Quote", symbol: "USDC" },
+              priceUsd: a.base_token_price_usd || "0",
+              liquidity: { usd: Number(a.reserve_in_usd || 0) },
+              volume: { h24: Number(a.volume_usd?.h24 || 0), m5: Number(a.volume_usd?.m5 || 0) },
+              txns: { h24: h24tx, h1: h1tx, m5: m5tx },
+              priceChange: a.price_change_percentage || {},
+              pairCreatedAt: Number.isFinite(created) ? created : 0,
+              dexId: a.dex_id || "geckoterminal",
+              url: `https://www.geckoterminal.com/${network}/pools/${a.address || ""}`,
+              info: { websites: infoWebsites, socials: [] },
+              discoverySource: "GeckoTerminal"
+            };
+          });
+        } catch (error) {
+          this.addLog(`GeckoTerminal ${network} indisponível: ${error.message || "erro"}.`, "warning");
+          return [];
+        }
+      };
+      const geckoPools = (await Promise.all(["eth", "solana", "bsc"].map(fetchGeckoPools))).flat();
+      this.addLog(`Descoberta independente GeckoTerminal: ${geckoPools.length} pools recentes recebidos.`, "scan");
       const byAddress = new Map();
       // Supplement keyword search with DexScreener's latest token discovery feeds.
       const fetchFeed = async endpoint => {
@@ -315,7 +365,7 @@ class PaperEngine {
         } catch { return []; }
       }));
       this.addLog(`Pares atualizados via token-pairs/v1 para ${seedList.length} tokens descobertos nos feeds recentes.`, "scan");
-      for (const pair of [...results.flat(), ...freshPairLists.flat()]) {
+      for (const pair of [...results.flat(), ...freshPairLists.flat(), ...geckoPools]) {
         if (!SUPPORTED_CHAINS.has(String(pair.chainId || "").toLowerCase()) || !pair.pairAddress) continue;
         byAddress.set(`${String(pair.chainId).toLowerCase()}:${String(pair.pairAddress).toLowerCase()}`, pair);
       }
@@ -346,6 +396,7 @@ class PaperEngine {
           simulationEntryPriceUsd: Number(candidatesById.get(pairKey)?.simulationEntryPriceUsd || result.priceUsd),
           simulationStartedAt: candidatesById.get(pairKey)?.simulationStartedAt || new Date(now).toISOString(),
           officialWebsite: Array.isArray(pair.info?.websites) ? (pair.info.websites.find(site => /^https?:\/\//i.test(String(site?.url || "")))?.url || "") : "",
+          discoverySource: pair.discoverySource || "DexScreener",
           liquidityUsd: result.liquidityUsd, ageMinutes: result.ageMinutes, dexId: pair.dexId || "",
           volume24hUsd: Number(pair.volume?.h24 || 0), txns1h: result.txns1h, buys1h: result.buys1h, sells1h: result.sells1h, isFreshPair: result.isFreshPair, strategy: result.strategy,
           buys5m: result.buys5m, sells5m: result.sells5m, volume5mUsd: result.volume5mUsd,
