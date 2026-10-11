@@ -194,6 +194,10 @@ function evaluatePair(pair, now = Date.now()) {
     ].filter(Boolean).length;
   }
 
+  // Normalize each chain's score to 0–100 so the entry threshold is comparable.
+  const entryScoreMax = chain === "bsc" ? 5 : 7;
+  const entryScorePct = Math.round((entryScore / entryScoreMax) * 100);
+
   // Shared confirmation pattern: recent buy pressure + active volume + controlled momentum.
   // Sludge/QSB historical entry metrics were not present in the screenshot; Solana's added multi-timeframe filter is provisional and must be validated on paper trades.
   const buySellRatio5m = buys5m / Math.max(sells5m, 1);
@@ -230,7 +234,7 @@ function evaluatePair(pair, now = Date.now()) {
     if (buys5m <= sells5m) reasons.push("Padrão estabelecido: compras não superam vendas em 5 min");
     if (priceChange5m <= 0 || priceChange5m > winnerPatternMaxChange5m) reasons.push(`Padrão estabelecido: variação de 5 min fora de 0–${winnerPatternMaxChange5m}%`);
   }
-  if (entryScore < 3) reasons.push(`Qualidade de entrada insuficiente (score ${entryScore}; mínimo 3)`);
+  if (entryScorePct <= numEnv("MIN_ENTRY_SCORE_PCT", 70)) reasons.push(`Score de entrada insuficiente (${entryScorePct}/100; precisa ser acima de ${numEnv("MIN_ENTRY_SCORE_PCT", 70)}/100)`);
 
   const selected = tokenSide(pair);
   const selectedSymbol = String(selected.token?.symbol || "").trim().toUpperCase();
@@ -242,7 +246,7 @@ function evaluatePair(pair, now = Date.now()) {
   const officialSites = Array.isArray(pair?.info?.websites) ? pair.info.websites : [];
   const hasOfficialWebsite = officialSites.some(site => /^https?:\/\//i.test(String(site?.url || "")));
   if (!hasOfficialWebsite) reasons.push("Sem site oficial verificável — entrada bloqueada");
-  return { approved: reasons.length === 0, reasons, entryScore, strategy, isFreshPair, liquidityUsd: liquidity, volume24hUsd: volume24h, txns1h, buys1h, sells1h,
+  return { approved: reasons.length === 0, reasons, entryScore, entryScorePct, strategy, isFreshPair, liquidityUsd: liquidity, volume24hUsd: volume24h, txns1h, buys1h, sells1h,
     buys5m, sells5m, volume5mUsd: volume5m, priceChange5m, priceChange15m, priceChange1h,
     buySellRatio: buys1h / Math.max(sells1h, 1), buySellRatio5m,
     ageMinutes: Number.isFinite(ageHours) ? Math.round(ageHours * 60) : null,
