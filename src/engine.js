@@ -271,18 +271,27 @@ class PaperEngine {
           return [];
         }
       };
-      const [profiles, boosts] = await Promise.all([
+      // Feeds oficiais de descoberta consultados uma vez por ciclo (padrão: 30 s).
+      const [profiles, boosts, topBoosts, ads] = await Promise.all([
         fetchFeed("token-profiles/latest/v1"),
-        fetchFeed("token-boosts/latest/v1")
+        fetchFeed("token-boosts/latest/v1"),
+        fetchFeed("token-boosts/top/v1"),
+        fetchFeed("ads/latest/v1")
       ]);
       const seeds = new Map();
-      for (const item of [...profiles, ...boosts]) {
-        const chain = String(item.chainId || "").toLowerCase();
-        const tokenAddress = String(item.tokenAddress || "").trim();
-        if (!SUPPORTED_CHAINS.has(chain) || !tokenAddress) continue;
-        seeds.set(`${chain}:${tokenAddress.toLowerCase()}`, { chain, tokenAddress });
+      for (const [source, items] of [["perfil recente", profiles], ["boost recente", boosts], ["top boosts", topBoosts], ["anúncio recente", ads]]) {
+        for (const item of items) {
+          const chain = String(item.chainId || "").toLowerCase();
+          const tokenAddress = String(item.tokenAddress || "").trim();
+          if (!SUPPORTED_CHAINS.has(chain) || !tokenAddress) continue;
+          const key = `${chain}:${tokenAddress.toLowerCase()}`;
+          const previous = seeds.get(key) || { chain, tokenAddress, sources: [] };
+          if (!previous.sources.includes(source)) previous.sources.push(source);
+          seeds.set(key, previous);
+        }
       }
       const seedList = [...seeds.values()].slice(0, 12);
+      this.addLog(`Feeds DexScreener: perfis ${profiles.length}, boosts recentes ${boosts.length}, top boosts ${topBoosts.length}, anúncios ${ads.length}; ${seedList.length} tokens únicos.`, "scan");
       const freshPairLists = await Promise.all(seedList.map(async token => {
         try {
           const response = await fetch(`https://api.dexscreener.com/token-pairs/v1/${encodeURIComponent(token.chain)}/${encodeURIComponent(token.tokenAddress)}`, { headers: { accept: "application/json" }, signal: AbortSignal.timeout(10000) });
@@ -291,7 +300,7 @@ class PaperEngine {
           return Array.isArray(data) ? data : [];
         } catch { return []; }
       }));
-      this.addLog(`Feed de descoberta recente: ${seedList.length} tokens consultados.`, "scan");
+      this.addLog(`Pares atualizados via token-pairs/v1 para ${seedList.length} tokens descobertos nos feeds recentes.`, "scan");
       for (const pair of [...results.flat(), ...freshPairLists.flat()]) {
         if (!SUPPORTED_CHAINS.has(String(pair.chainId || "").toLowerCase()) || !pair.pairAddress) continue;
         byAddress.set(`${String(pair.chainId).toLowerCase()}:${String(pair.pairAddress).toLowerCase()}`, pair);
