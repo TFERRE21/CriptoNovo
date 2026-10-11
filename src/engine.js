@@ -446,7 +446,7 @@ class PaperEngine {
           result.approved === true &&
           Array.isArray(result.reasons) && result.reasons.length === 0 &&
           winnerPatternCompatible === true &&
-          Number(result.entryScore || 0) >= 3 &&
+          Number(result.entryScorePct ?? 0) >= numEnv("MIN_ENTRY_SCORE_PCT", 70) &&
           Number(result.ageMinutes) >= 0 &&
           Number(result.ageMinutes) <= 1440 &&
           hasOfficialWebsiteForEntry &&
@@ -484,7 +484,7 @@ class PaperEngine {
           volume24hUsd: Number(pair.volume?.h24 || 0), txns1h: result.txns1h, buys1h: result.buys1h, sells1h: result.sells1h, isFreshPair: result.isFreshPair, strategy: result.strategy,
           buys5m: result.buys5m, sells5m: result.sells5m, volume5mUsd: result.volume5mUsd,
           priceChange5m: result.priceChange5m, priceChange15m: result.priceChange15m, priceChange1h: result.priceChange1h,
-          buySellRatio: result.buySellRatio, buySellRatio5m: result.buySellRatio5m, entryScore: result.entryScore,
+          buySellRatio: result.buySellRatio, buySellRatio5m: result.buySellRatio5m, entryScore: result.entryScore, entryScorePct: result.entryScorePct,
           strategySegment,
           winnerPatternCompatible, approved: entryAllowed,
           reasons: [...result.reasons, ...(!winnerPatternCompatible ? ["Padrão vencedor não confirmado — entrada bloqueada"] : [])],
@@ -534,7 +534,7 @@ class PaperEngine {
       candidate?.approved === true &&
       candidate?.winnerPatternCompatible === true &&
       candidate?.strategySegment === "MOMENTUM_COM_LIQUIDEZ" &&
-      Number(candidate?.entryScore || 0) >= 3 &&
+      Number(candidate?.entryScorePct ?? 0) >= numEnv("MIN_ENTRY_SCORE_PCT", 70) &&
       Array.isArray(candidate?.reasons) && candidate.reasons.length === 0 &&
       Number(candidate?.ageMinutes) >= 0 &&
       Number(candidate?.ageMinutes) <= 1440 &&
@@ -609,6 +609,7 @@ class PaperEngine {
         dexId: candidate.dexId || null,
         priceUsd: Number(candidate.priceUsd || 0),
         entryScore: Number(candidate.entryScore || 0),
+        entryScorePct: Number(candidate.entryScorePct || 0),
         isFreshPair: Boolean(candidate.isFreshPair),
         strategy: candidate.strategy || null,
         priceChange5m: Number(candidate.priceChange5m || 0),
@@ -662,6 +663,19 @@ class PaperEngine {
               const grossChangePct = (price / position.entryPriceUsd - 1) * 100;
               const costPct = numEnv("ESTIMATED_ROUNDTRIP_COST_PCT", 1.5);
               position.estimatedNetPct = grossChangePct - costPct;
+              // Trailing de lucro em degraus de 10 pontos percentuais:
+              // ao atingir +10%, protege +10%; ao atingir +20%, protege +20%, etc.
+              const currentNetPct = Number(position.estimatedNetPct);
+              const previousPeak = Number(position.maxNetProfitPct ?? -Infinity);
+              position.maxNetProfitPct = Math.max(previousPeak, currentNetPct);
+              const profitStep = Math.floor(position.maxNetProfitPct / 10) * 10;
+              if (profitStep >= 10) {
+                position.protectedProfitPct = profitStep;
+                position.trailingSellArmed = true;
+              } else {
+                position.protectedProfitPct = 0;
+                position.trailingSellArmed = false;
+              }
               position.updatedAt = new Date().toISOString();
               priceUpdated = true;
               const settings = this.state.settings?.[chainId] || defaultSettings()[chainId];
@@ -680,8 +694,15 @@ class PaperEngine {
                 this.addLog(`ALVO DE SAÍDA ATINGIDO: ${position.tokenSymbol}; valor estimado R${positionValueBrl.toFixed(2)}, alvo R${exitTargetBrl.toFixed(2)}, câmbio de referência R${usdBrlRate.toFixed(2)}/US$.`, "profit", {tokenSymbol: position.tokenSymbol, chainId, positionValueBrl, exitTargetBrl, usdBrlRate});
                 continue;
               }
-              if (position.estimatedNetPct >= target) {
-                this.closePosition(position, price, "ALVO_LIQUIDO");
+              // Não vender automaticamente num alvo fixo: deixar o lucro correr.
+              // Quando o preço recua abaixo do último degrau protegido, executar venda simulada.
+              if (position.trailingSellArmed && currentNetPct < Number(position.protectedProfitPct || 0)) {
+                const protectedPct = Number(position.protectedProfitPct || 0);
+                this.closePosition(position, price, "TRAILING_LUCRO_" + protectedPct + "PCT");
+                this.addLog(`VENDA TRAILING SIMULADA: ${position.tokenSymbol}; pico líquido ${Number(position.maxNetProfitPct || 0).toFixed(2)}%; degrau protegido +${protectedPct}%; saída no recuo para ${currentNetPct.toFixed(2)}%.`, "profit", {
+                  tokenSymbol: position.tokenSymbol, chainId, protectedProfitPct: protectedPct,
+                  maxNetProfitPct: Number(position.maxNetProfitPct || 0), exitNetProfitPct: currentNetPct
+                });
                 continue;
               }
             }
