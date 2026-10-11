@@ -328,6 +328,7 @@ class PaperEngine {
           tokenName: result.token?.name || "Desconhecido",
           tokenSymbol: result.token?.symbol || "?",
           url: pair.url || "", priceUsd: result.priceUsd,
+          officialWebsite: Array.isArray(pair.info?.websites) ? (pair.info.websites.find(site => /^https?:\\/\\//i.test(String(site?.url || "")))?.url || "") : "",
           liquidityUsd: result.liquidityUsd, ageMinutes: result.ageMinutes, dexId: pair.dexId || "",
           volume24hUsd: Number(pair.volume?.h24 || 0), txns1h: result.txns1h, buys1h: result.buys1h, sells1h: result.sells1h, isFreshPair: result.isFreshPair, strategy: result.strategy,
           buys5m: result.buys5m, sells5m: result.sells5m, volume5mUsd: result.volume5mUsd,
