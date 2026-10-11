@@ -662,6 +662,23 @@ class PaperEngine {
       }
     }
   }
+  manualStrategyEntry(candidateId) {
+    const candidate = this.state.candidates.find(c => String(c.id) === String(candidateId));
+    if (!candidate) throw new Error("Projeto não encontrado no monitor.");
+    const chainId = String(candidate.chainId || "bsc").toLowerCase();
+    const alreadyOpen = this.state.positions.some(p => p.status === "OPEN" && String(p.chainId || "bsc").toLowerCase() === chainId && String(p.pairAddress || "").toLowerCase() === String(candidate.pairAddress || "").toLowerCase());
+    if (alreadyOpen) throw new Error("Este projeto já tem uma posição aberta.");
+    if (candidate.approved !== true || candidate.winnerPatternCompatible !== true || candidate.strategySegment !== "MOMENTUM_COM_LIQUIDEZ" || !Array.isArray(candidate.reasons) || candidate.reasons.length !== 0) {
+      this.addLog("COMPRA MANUAL BLOQUEADA: " + candidate.tokenSymbol + " não está compatível com a estratégia aprovada.", "blocked", {tokenSymbol:candidate.tokenSymbol,chainId,pairAddress:candidate.pairAddress});
+      throw new Error("Fora do padrão. A compra manual respeita a estratégia e foi bloqueada.");
+    }
+    const before = this.state.positions.filter(p => p.status === "OPEN").length;
+    this.openPaperPosition(candidate);
+    const position = this.state.positions.find(p => p.status === "OPEN" && String(p.chainId || "bsc").toLowerCase() === chainId && String(p.pairAddress || "").toLowerCase() === String(candidate.pairAddress || "").toLowerCase());
+    if (!position || this.state.positions.filter(p => p.status === "OPEN").length <= before - 1) throw new Error("Entrada não executada: limite de posições, saldo ou outra trava do motor.");
+    this.addLog("COMPRA MANUAL SIMULADA AUTORIZADA PELA ESTRATÉGIA: " + candidate.tokenSymbol + ".", "manual-entry", {tokenSymbol:candidate.tokenSymbol,chainId,pairAddress:candidate.pairAddress});
+    return {ok:true,position};
+  }
   manualSimulateEntry(candidateId, amountUsd = 10) {
     const candidate = this.state.candidates.find(c => String(c.id) === String(candidateId));
     if (!candidate) throw new Error("Projeto não encontrado no monitor.");
