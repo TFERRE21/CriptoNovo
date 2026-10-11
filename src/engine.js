@@ -175,7 +175,12 @@ function evaluatePair(pair, now = Date.now()) {
     if (priceChange15m <= 0) reasons.push("Solana: tendência de 15 min sem confirmação positiva");
     if (priceChange15m > numEnv("SOL_MAX_PRICE_CHANGE_15M_PCT", 12)) reasons.push("Solana: alta de 15 min excessiva; risco de entrada atrasada");
     if (priceChange1h < numEnv("SOL_MIN_PRICE_CHANGE_1H_PCT", -5)) reasons.push("Solana: tendência de 1 hora muito fraca");
-    if (priceChange1h > numEnv("SOL_MAX_PRICE_CHANGE_1H_PCT", 25)) reasons.push("Solana: alta de 1 hora excessiva; risco de comprar após pump");
+    // Para projetos muito novos com liquidez/volume fortes, permitir continuação de tendência
+    // até +80% em 1h; ainda exigir confirmação de fluxo e momentum curto para não comprar um candle isolado.
+    const solMaxMove1h = isFreshPair
+      ? numEnv("SOL_FRESH_MAX_PRICE_CHANGE_1H_PCT", 80)
+      : numEnv("SOL_MAX_PRICE_CHANGE_1H_PCT", 25);
+    if (priceChange1h > solMaxMove1h) reasons.push(`Solana: alta de 1 hora excessiva para o estágio (${solMaxMove1h}% máximo)`);
     if (volume5m <= 0) reasons.push("Solana: sem volume recente verificável");
     // Ajuste provisório inspirado nos dois resultados positivos: combinar fluxo comprador
     // de curto prazo com confirmação de tendência, evitando sinais isolados de 5 minutos.
@@ -185,7 +190,7 @@ function evaluatePair(pair, now = Date.now()) {
       priceChange5m > 0 && priceChange5m <= maxChange5m / 2,
       buys5m + sells5m >= minTx5m * 2,
       priceChange15m > 0 && priceChange15m <= numEnv("SOL_MAX_PRICE_CHANGE_15M_PCT", 12),
-      priceChange1h >= 0 && priceChange1h <= numEnv("SOL_MAX_PRICE_CHANGE_1H_PCT", 25)
+      priceChange1h >= 0 && priceChange1h <= solMaxMove1h
     ].filter(Boolean).length;
   }
 
