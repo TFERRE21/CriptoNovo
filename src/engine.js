@@ -573,11 +573,12 @@ class PaperEngine {
       return;
     }
     this.state.experiment = { targetEntries: 60, entriesOpened: 0, completed: false, startedAt: null, ...(this.state.experiment || {}) };
-    const maxOpen = numEnv("MAX_OPEN_POSITIONS", 6);
+    // Estratégia de fila: manter no máximo uma posição aberta em todo o robô.
+    // Após a venda/fechamento, uma nova entrada pode ocorrer quando um candidato voltar a cumprir os filtros.
+    const maxOpen = 1;
     const totalEntries = Number(this.state.experiment.entriesOpened || 0);
     const chainId = String(candidate.chainId || "bsc").toLowerCase();
     const chainEntries = [...this.state.positions, ...this.state.trades].filter(p => String(p.chainId || "bsc").toLowerCase() === chainId && Number(p.experimentEntryNumber) > 0).length;
-    if (chainEntries >= 20 || totalEntries >= 60 || this.state.experiment.completed) return;
     const networkSettings = this.state.settings?.[chainId] || defaultSettings()[chainId];
     const open = this.state.positions.filter(p => p.status === "OPEN");
     this.state.networkBalances = this.state.networkBalances || chainBalances(Number(process.env.PAPER_BALANCE_USD || 100));
@@ -592,9 +593,8 @@ class PaperEngine {
     const notional = chainId === "solana"
       ? Number((availableBalance * 0.99).toFixed(2))
       : (hasProfitableTrade ? Number((availableBalance * 0.99).toFixed(2)) : configuredNotional);
-    if (open.length >= maxOpen || open.filter(p => String(p.chainId || "bsc").toLowerCase() === chainId).length >= 3 || availableBalance < notional || notional < 1) return;
+    if (open.length >= maxOpen || availableBalance < notional || notional < 1) return;
     if (open.some(p => String(p.chainId || "bsc").toLowerCase() === chainId && String(p.pairAddress || "").toLowerCase() === String(candidate.pairAddress || "").toLowerCase())) return;
-    if (this.state.trades.some(t => String(t.chainId || "bsc").toLowerCase() === chainId && String(t.pairAddress || "").toLowerCase() === String(candidate.pairAddress || "").toLowerCase())) return;
     if (!(candidate.priceUsd > 0)) return;
     const position = {
       id: candidate.id, chainId: candidate.chainId || "bsc", pairAddress: candidate.pairAddress, tokenAddress: candidate.tokenAddress,
@@ -666,11 +666,8 @@ class PaperEngine {
             Number(f.buys5m || 0) > Number(f.sells5m || 0) &&
             Number(f.priceChange5m || 0) > 0 &&
             Number(f.priceChange5m || 0) <= numEnv("WINNER_PATTERN_MAX_PRICE_CHANGE_5M_PCT", 20));
-      if (!legacyEntryCompatible) {
-        this.closePosition(position, Number(position.lastPriceUsd || position.entryPriceUsd || 0), "ENCERRADA_FILTRO_ESTRATEGIA");
-        this.addLog(`POSIÇÃO SIMULADA ENCERRADA POR SEGURANÇA: ${position.tokenSymbol} não tem comprovação de compatibilidade na entrada.`, "blocked", {tokenSymbol: position.tokenSymbol, chainId, pairAddress: position.pairAddress});
-        continue;
-      }
+      // A estratégia é validada no momento da entrada. Não encerrar uma posição aberta
+      // só porque o momentum mudou depois da compra; a saída é controlada pelo trailing de lucro.
       // Nenhuma rede usa stop-loss nem encerramento por tempo: posição virtual fica aberta até a meta de lucro.
       const expired = false;
       let priceUpdated = false;
