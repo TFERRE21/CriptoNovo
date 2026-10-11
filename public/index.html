@@ -71,7 +71,16 @@ main{max-width:1400px;margin:auto;padding:28px 18px}header{display:flex;align-it
 .position-card-foot{border-top:1px solid var(--border,#26364f);padding-top:10px}
 #positionsPanel .tablewrap{overflow:visible}
 #positionsPanel #positions{display:grid!important}
-/* Painel focado: monitoramento de novos projetos + posições abertas/vendas */ main > section.grid:not(#earlyProjectTotals), #settingsPanel, main > section.panel:not(#earlyProjectsPanel):not(#positionsPanel), .two > .panel:first-child, .right-stack > .panel:first-child { display:none !important; } #earlyProjectsPanel, #earlyProjectTotals, section.two, .right-stack, .right-stack > .panel:last-child { display:block !important; } #earlyProjects { }</style></head><body><main>
+/* Painel focado: monitoramento de novos projetos + posições abertas/vendas */ main > section.grid:not(#earlyProjectTotals), #settingsPanel, main > section.panel:not(#earlyProjectsPanel):not(#positionsPanel), .two > .panel:first-child, .right-stack > .panel:first-child { display:none !important; } #earlyProjectsPanel, #earlyProjectTotals, section.two, .right-stack, .right-stack > .panel:last-child { display:block !important; } #earlyProjects { }
+/* OVERRIDE FINAL: cartões financeiros alinhados em linha */
+#earlyProjectTotals{display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;width:100%!important;max-width:100%!important;margin:12px 0 18px!important;gap:12px!important;align-items:stretch!important}
+#earlyProjectTotals>.card{display:flex!important;flex-direction:column!important;aspect-ratio:1/1!important;min-width:0!important;width:100%!important;max-width:none!important;min-height:0!important;padding:clamp(12px,1.5vw,22px)!important;justify-content:center!important;box-sizing:border-box!important}
+#earlyProjectTotals>.card .metric{font-size:clamp(16px,1.5vw,26px)!important;overflow-wrap:anywhere!important}
+#earlyProjectTotals>.card .label{font-size:clamp(10px,.85vw,12px)!important}
+@media(max-width:1100px){#earlyProjectTotals{grid-template-columns:repeat(3,minmax(0,1fr))!important}}
+@media(max-width:700px){#earlyProjectTotals{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+@media(max-width:420px){#earlyProjectTotals{grid-template-columns:1fr!important}#earlyProjectTotals>.card{aspect-ratio:auto!important;min-height:110px!important}}
+</style></head><body><main>
 <header><div class="brand"><div class="logo">C</div><div><h1>CriptoNovo</h1><p>BNB Chain · Ethereum · Solana</p></div></div><div class="actions"><button id="refresh">Atualizar</button><button id="start" class="primary">Iniciar simulação</button><button id="reset" class="danger">Zerar e reiniciar teste</button><button id="stop" class="danger">Parar</button></div></header>
 <div class="notice"><strong>Modo simulação:</strong> não envia transações nem acessa carteiras. “Aprovado” significa apenas que passou pelos filtros básicos; não representa garantia de segurança ou lucro.</div>
 <section class="grid">
