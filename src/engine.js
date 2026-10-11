@@ -239,13 +239,22 @@ class PaperEngine {
         "ETH USDC", "ETH USDT", "PEPE WETH", "PEPE", "SHIB WETH", "SHIB", "LINK WETH", "LINK", "UNI WETH", "UNI",
         "AAVE WETH", "Uniswap", "SOL USDC", "SOL USDT", "Raydium", "Solana"
       ];
+      // A falha de uma busca não deve derrubar a varredura inteira nem aparentar que o robô parou.
       const results = await Promise.all(queries.map(async q => {
-        const response = await fetch(`https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(q)}`, {
-          headers: { accept: "application/json" }, signal: AbortSignal.timeout(12000)
-        });
-        if (!response.ok) throw new Error(`DexScreener (${q}) respondeu HTTP ${response.status}`);
-        const data = await response.json();
-        return Array.isArray(data.pairs) ? data.pairs : [];
+        try {
+          const response = await fetch(`https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(q)}`, {
+            headers: { accept: "application/json" }, signal: AbortSignal.timeout(12000)
+          });
+          if (!response.ok) {
+            this.addLog(`Busca DexScreener (${q}) retornou HTTP ${response.status}; demais consultas continuarão.`, "warning");
+            return [];
+          }
+          const data = await response.json();
+          return Array.isArray(data.pairs) ? data.pairs : [];
+        } catch (error) {
+          this.addLog(`Busca DexScreener (${q}) falhou: ${error.message || "erro"}; demais consultas continuarão.`, "warning");
+          return [];
+        }
       }));
       const byAddress = new Map();
       const fetchFeed = async endpoint => {
@@ -342,7 +351,7 @@ class PaperEngine {
       this.state.lastError = null;
     } catch (error) {
       this.state.lastError = error.message || "Erro desconhecido";
-      this.addLog(`Erro na consulta: ${this.state.lastError}`, "error");
+      this.addLog(`Erro na consulta: ${this.state.lastError}; o monitor continuará tentando no próximo ciclo.`, "error");
     } finally {
       this.polling = false;
       await saveState(this.state);
