@@ -369,9 +369,11 @@ class PaperEngine {
         if (!SUPPORTED_CHAINS.has(String(pair.chainId || "").toLowerCase()) || !pair.pairAddress) continue;
         byAddress.set(`${String(pair.chainId).toLowerCase()}:${String(pair.pairAddress).toLowerCase()}`, pair);
       }
+      // Analisa no máximo 50 projetos únicos por ciclo, priorizando pares mais recentes.
       const pairs = [...byAddress.values()]
         .sort((a, b) => Number(b.pairCreatedAt || 0) - Number(a.pairCreatedAt || 0))
-        .filter(pair => SUPPORTED_CHAINS.has(String(pair.chainId || "").toLowerCase()));
+        .filter(pair => SUPPORTED_CHAINS.has(String(pair.chainId || "").toLowerCase()))
+        .slice(0, 50);
       const seen = new Set(this.state.seenPairAddresses);
       const now = Date.now();
       this.state.pairsAnalyzed = Number(this.state.pairsAnalyzed || 0) + pairs.length;
@@ -386,6 +388,19 @@ class PaperEngine {
         const pairKey = `${chainId}:${address}`;
         if (!address) continue;
         const result = evaluatePair(pair, now);
+        // Critério único para o selo COMPATÍVEL no painel e para permitir entrada.
+        // Um projeto fora deste padrão nunca pode abrir posição, mesmo que outro filtro aprove o par.
+        const officialSitesForEntry = Array.isArray(pair.info?.websites) ? pair.info.websites : [];
+        const hasOfficialWebsiteForEntry = officialSitesForEntry.some(site => /^https?:\\/\\//i.test(String(site?.url || "")));
+        const winnerPatternCompatible =
+          hasOfficialWebsiteForEntry &&
+          result.liquidityUsd >= numEnv("WINNER_PATTERN_MIN_LIQUIDITY_USD", 15000) &&
+          Number(pair.volume?.h24 || 0) >= numEnv("WINNER_PATTERN_MIN_VOLUME_24H_USD", 50000) &&
+          result.buys5m + result.sells5m >= numEnv("WINNER_PATTERN_MIN_TXNS_5M", 4) &&
+          result.buys5m > result.sells5m &&
+          result.priceChange5m > 0 &&
+          result.priceChange5m <= numEnv("WINNER_PATTERN_MAX_PRICE_CHANGE_5M_PCT", 20);
+        const entryAllowed = result.approved && winnerPatternCompatible;
         const candidate = {
           id: pairKey, chainId, pairAddress: pair.pairAddress,
           tokenAddress: result.token?.address || "",
@@ -401,8 +416,10 @@ class PaperEngine {
           volume24hUsd: Number(pair.volume?.h24 || 0), txns1h: result.txns1h, buys1h: result.buys1h, sells1h: result.sells1h, isFreshPair: result.isFreshPair, strategy: result.strategy,
           buys5m: result.buys5m, sells5m: result.sells5m, volume5mUsd: result.volume5mUsd,
           priceChange5m: result.priceChange5m, priceChange15m: result.priceChange15m, priceChange1h: result.priceChange1h,
-          buySellRatio: result.buySellRatio, buySellRatio5m: result.buySellRatio5m, entryScore: result.entryScore, approved: result.approved,
-          reasons: result.reasons, status: result.approved ? (result.isFreshPair ? "MOEDA NOVA — SINAL CONFIRMADO" : "APROVADO — MOMENTUM CONFIRMADO") : "BLOQUEADO",
+          buySellRatio: result.buySellRatio, buySellRatio5m: result.buySellRatio5m, entryScore: result.entryScore,
+          winnerPatternCompatible, approved: entryAllowed,
+          reasons: [...result.reasons, ...(!winnerPatternCompatible ? ["Padrão vencedor não confirmado — entrada bloqueada"] : [])],
+          status: entryAllowed ? (result.isFreshPair ? "MOEDA NOVA — SINAL CONFIRMADO" : "APROVADO — MOMENTUM CONFIRMADO") : "BLOQUEADO",
           detectedAt: candidatesById.get(pairKey)?.detectedAt || new Date(now).toISOString(),
           lastSeenAt: new Date(now).toISOString()
         };
@@ -417,7 +434,7 @@ class PaperEngine {
           if (existing) Object.assign(existing, candidate);
         }
         // Evaluate entry signals on every poll, not only the first time a pair is discovered.
-        if (this.state.running && result.approved) this.openPaperPosition(candidate);
+        if (this.state.running && entryAllowed) this.openPaperPosition(candidate);
       }
       this.state.seenPairAddresses = [...seen].slice(-5000);
       this.state.candidates = this.state.candidates.slice(0, 500);
@@ -608,7 +625,7 @@ class PaperEngine {
       closedTradesCount: this.state.trades.length, experiment: { targetEntries: 60, entriesOpened: 0, completed: false, ...(this.state.experiment || {}) }, realizedPnlUsd: Number(realizedPnlUsd.toFixed(4)),
       settings: { ...defaultSettings(), ...(this.state.settings || {}) },
       settingsUpdatedAt: this.state.settingsUpdatedAt || null,
-      engineBuild: "winner-pattern-v1-2026-10-10",
+      engineBuild: "winner-pattern-entry-gate-v2-2026-10-10",
       targetNetPct: numEnv("TAKE_PROFIT_NET_PCT", 4), mode: "PAPER" };
   }
 }
