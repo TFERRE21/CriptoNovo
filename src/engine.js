@@ -469,6 +469,16 @@ class PaperEngine {
             : result.isFreshPair
               ? "LANCAMENTO_EM_OBSERVACAO"
               : "MOMENTUM_NAO_CONFIRMADO";
+        const entryBlockReasons = [...result.reasons];
+        if (!hasOfficialWebsiteForEntry && !entryBlockReasons.some(reason => /site oficial/i.test(reason))) {
+          entryBlockReasons.push("Site oficial não encontrado");
+        }
+        if (!winnerPatternCompatible && !entryBlockReasons.some(reason => /padrão vencedor/i.test(reason))) {
+          entryBlockReasons.push("Critérios combinados de liquidez, volume, compras e momentum não atendidos");
+        }
+        if (Number(result.entryScore || 0) < 3 && !entryBlockReasons.some(reason => /score|qualidade de entrada/i.test(reason))) {
+          entryBlockReasons.push(`Score ${result.entryScore}/7; mínimo 3/7`);
+        }
         const candidate = {
           id: pairKey, chainId, pairAddress: pair.pairAddress,
           tokenAddress: result.token?.address || "",
@@ -487,7 +497,7 @@ class PaperEngine {
           buySellRatio: result.buySellRatio, buySellRatio5m: result.buySellRatio5m, entryScore: result.entryScore, entryScorePct: result.entryScorePct,
           strategySegment,
           winnerPatternCompatible, approved: entryAllowed,
-          reasons: [...result.reasons, ...(!winnerPatternCompatible ? ["Padrão vencedor não confirmado — entrada bloqueada"] : [])],
+          reasons: entryAllowed ? [] : entryBlockReasons,
           status: entryAllowed ? (result.isFreshPair ? "MOEDA NOVA — SINAL CONFIRMADO" : "APROVADO — MOMENTUM CONFIRMADO") : "BLOQUEADO",
           detectedAt: candidatesById.get(pairKey)?.detectedAt || new Date(now).toISOString(),
           lastSeenAt: new Date(now).toISOString()
