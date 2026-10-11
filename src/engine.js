@@ -594,7 +594,7 @@ class PaperEngine {
         Number(f.buys5m || 0) > Number(f.sells5m || 0) &&
         Number(f.priceChange5m || 0) > 0 &&
         Number(f.priceChange5m || 0) <= numEnv("WINNER_PATTERN_MAX_PRICE_CHANGE_5M_PCT", 20);
-      if (position.strategyApprovedAtEntry !== true && !legacyEntryCompatible) {
+      if (!legacyEntryCompatible) {
         this.closePosition(position, Number(position.lastPriceUsd || position.entryPriceUsd || 0), "ENCERRADA_FILTRO_ESTRATEGIA");
         this.addLog(`POSIÇÃO SIMULADA ENCERRADA POR SEGURANÇA: ${position.tokenSymbol} não tem comprovação de compatibilidade na entrada.`, "blocked", {tokenSymbol: position.tokenSymbol, chainId, pairAddress: position.pairAddress});
         continue;
