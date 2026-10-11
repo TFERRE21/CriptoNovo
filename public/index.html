@@ -114,7 +114,7 @@ async function api(path,method='GET',body){const r=await fetch(path,{method,head
 function rowToken(c){const chain=String(c.chainId||'bsc');const pairUrl=(c.url&&/^https:\/\/dexscreener\.com\//i.test(c.url))?c.url:(c.pairAddress?'https://dexscreener.com/'+encodeURIComponent(chain)+'/'+encodeURIComponent(c.pairAddress):'#');return '<a href="'+pairUrl+'" target="_blank" rel="noopener noreferrer">'+(c.tokenSymbol||'?')+'</a><div class="mono">'+short(c.tokenAddress)+'</div><div class="label">'+(c.tokenName||'')+'</div>'}
 let settingsLoaded=false;
 function showSettings(settings){
- for(const id of ['bsc','ethereum','solana']){const v=settings?.[id]||{};document.querySelector('#'+id+'Entry').value=Number(v.entryUsd??10);document.querySelector('#'+id+'Target').value=Number(v.takeProfitNetPct??4);document.querySelector('#'+id+'StopEnabled').checked=false;document.querySelector('#'+id+'StopPct').value=Number(v.stopLossNetPct??2.5)}
+ for(const id of ['bsc','ethereum','solana']){const v=settings?.[id]||{};document.querySelector('#'+id+'Entry').value=Number(v.entryUsd??10);document.querySelector('#'+id+'Target').value=Number(v.takeProfitNetPct??4)}
  settingsLoaded=true;document.querySelector('#settingsMessage').textContent='Configurações carregadas.';
 }
 document.querySelector('#settingsForm').addEventListener('submit',async e=>{
