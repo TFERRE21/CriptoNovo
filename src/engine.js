@@ -199,16 +199,32 @@ function evaluatePair(pair, now = Date.now()) {
   if (buys5m <= sells5m) reasons.push("Confirmação comum: vendas iguais ou superiores às compras nos últimos 5 min");
   if (priceChange5m <= 0) reasons.push("Confirmação comum: preço sem impulso positivo em 5 min");
   if (volume5m <= 0) reasons.push("Confirmação comum: sem volume recente");
-  // Filtro experimental inspirado nos projetos positivos da amostra do usuário.
+  // Filtro compartilhado por estágio: lançamento recente usa volume/liquidez recentes,
+  // enquanto projetos com mais tempo precisam comprovar volume acumulado de 24h.
   const winnerPatternMinLiquidity = numEnv("WINNER_PATTERN_MIN_LIQUIDITY_USD", 15000);
   const winnerPatternMinVolume24h = numEnv("WINNER_PATTERN_MIN_VOLUME_24H_USD", 50000);
   const winnerPatternMinTxns5m = numEnv("WINNER_PATTERN_MIN_TXNS_5M", 4);
   const winnerPatternMaxChange5m = numEnv("WINNER_PATTERN_MAX_PRICE_CHANGE_5M_PCT", 20);
-  if (liquidity < winnerPatternMinLiquidity) reasons.push(`Padrão vencedores: liquidez abaixo de US${winnerPatternMinLiquidity}`);
-  if (volume24h < winnerPatternMinVolume24h) reasons.push(`Padrão vencedores: volume 24h abaixo de US${winnerPatternMinVolume24h}`);
-  if (buys5m + sells5m < winnerPatternMinTxns5m) reasons.push(`Padrão vencedores: menos de ${winnerPatternMinTxns5m} transações em 5 min`);
-  if (buys5m <= sells5m) reasons.push("Padrão vencedores: compras não superam vendas nos últimos 5 min");
-  if (priceChange5m <= 0 || priceChange5m > winnerPatternMaxChange5m) reasons.push(`Padrão vencedores: variação de 5 min fora de 0–${winnerPatternMaxChange5m}%`);
+  const freshPatternLiquidity = chain === "ethereum" ? numEnv("MIN_FRESH_LIQUIDITY_USD", 1800)
+    : chain === "bsc" ? numEnv("BSC_MIN_LIQUIDITY_USD", 1500)
+    : numEnv("SOL_MIN_LIQUIDITY_USD", 2000);
+  const freshPatternVolume5m = numEnv("MIN_FRESH_VOLUME_5M_USD", 500);
+  const freshPatternMaxMove = chain === "ethereum" ? numEnv("MAX_FRESH_PRICE_CHANGE_5M_PCT", 12)
+    : chain === "bsc" ? numEnv("BSC_MAX_PRICE_CHANGE_5M_PCT", 15)
+    : numEnv("SOL_MAX_PRICE_CHANGE_5M_PCT", 20);
+  if (isFreshPair) {
+    if (liquidity < freshPatternLiquidity) reasons.push(`Padrão lançamento: liquidez abaixo de US${freshPatternLiquidity}`);
+    if (volume5m < freshPatternVolume5m) reasons.push(`Padrão lançamento: volume de 5 min abaixo de US${freshPatternVolume5m}`);
+    if (buys5m + sells5m < winnerPatternMinTxns5m) reasons.push(`Padrão lançamento: menos de ${winnerPatternMinTxns5m} transações em 5 min`);
+    if (buys5m <= sells5m) reasons.push("Padrão lançamento: compras não superam vendas em 5 min");
+    if (priceChange5m <= 0 || priceChange5m > freshPatternMaxMove) reasons.push(`Padrão lançamento: variação de 5 min fora do intervalo positivo até ${freshPatternMaxMove}%`);
+  } else {
+    if (liquidity < winnerPatternMinLiquidity) reasons.push(`Padrão estabelecido: liquidez abaixo de US${winnerPatternMinLiquidity}`);
+    if (volume24h < winnerPatternMinVolume24h) reasons.push(`Padrão estabelecido: volume 24h abaixo de US${winnerPatternMinVolume24h}`);
+    if (buys5m + sells5m < winnerPatternMinTxns5m) reasons.push(`Padrão estabelecido: menos de ${winnerPatternMinTxns5m} transações em 5 min`);
+    if (buys5m <= sells5m) reasons.push("Padrão estabelecido: compras não superam vendas em 5 min");
+    if (priceChange5m <= 0 || priceChange5m > winnerPatternMaxChange5m) reasons.push(`Padrão estabelecido: variação de 5 min fora de 0–${winnerPatternMaxChange5m}%`);
+  }
   if (entryScore < 3) reasons.push(`Qualidade de entrada insuficiente (score ${entryScore}; mínimo 3)`);
 
   const selected = tokenSide(pair);
