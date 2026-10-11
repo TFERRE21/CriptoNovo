@@ -629,6 +629,18 @@ class PaperEngine {
       }
     }
   }
+  manualSell(positionId) {
+    const position = this.state.positions.find(p => String(p.id) === String(positionId) && p.status === "OPEN");
+    if (!position) throw new Error("A posição não está aberta ou não foi encontrada.");
+    const price = Number(position.lastPriceUsd || position.entryPriceUsd || 0);
+    if (!(price > 0)) throw new Error("Preço atual indisponível; venda manual não executada.");
+    this.closePosition(position, price, "VENDA_MANUAL");
+    this.addLog(`VENDA MANUAL EXECUTADA: ${position.tokenSymbol} ao preço disponível na simulação.`, "manual-sell", {
+      tokenSymbol: position.tokenSymbol, chainId: position.chainId, pairAddress: position.pairAddress,
+      pnlUsd: Number(position.pnlUsd || 0), closeReason: "VENDA_MANUAL"
+    });
+    return { ok: true, trade: this.state.trades[0] };
+  }
   closePosition(position, price, reason) {
     const grossPnlUsd = position.notionalUsd * (price / position.entryPriceUsd - 1);
     const costUsd = position.notionalUsd * numEnv("ESTIMATED_ROUNDTRIP_COST_PCT", 1.5) / 100;
