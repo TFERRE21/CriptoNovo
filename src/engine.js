@@ -458,11 +458,32 @@ class PaperEngine {
   }
   openPaperPosition(candidate) {
     // Trava final de segurança: nenhuma chamada pode abrir posição sem aprovação explícita do motor e do padrão vencedor.
-    if (candidate?.approved !== true || candidate?.winnerPatternCompatible !== true) {
-      this.addLog(`ENTRADA BLOQUEADA: ${candidate?.tokenSymbol || "projeto"} não está compatível com a estratégia vencedora.`, "blocked", {
+    const candidateWebsite = String(candidate?.officialWebsite || "");
+    const candidateLiquidity = Number(candidate?.liquidityUsd || 0);
+    const candidateVolume24h = Number(candidate?.volume24hUsd || 0);
+    const candidateBuys5m = Number(candidate?.buys5m || 0);
+    const candidateSells5m = Number(candidate?.sells5m || 0);
+    const candidateM5 = Number(candidate?.priceChange5m || 0);
+    const strictWinnerGate =
+      candidate?.approved === true &&
+      candidate?.winnerPatternCompatible === true &&
+      /^https?:\/\//i.test(candidateWebsite) &&
+      candidateLiquidity >= numEnv("WINNER_PATTERN_MIN_LIQUIDITY_USD", 15000) &&
+      candidateVolume24h >= numEnv("WINNER_PATTERN_MIN_VOLUME_24H_USD", 50000) &&
+      candidateBuys5m + candidateSells5m >= numEnv("WINNER_PATTERN_MIN_TXNS_5M", 4) &&
+      candidateBuys5m > candidateSells5m &&
+      candidateM5 > 0 &&
+      candidateM5 <= numEnv("WINNER_PATTERN_MAX_PRICE_CHANGE_5M_PCT", 20);
+    if (!strictWinnerGate) {
+      this.addLog(`ENTRADA BLOQUEADA: ${candidate?.tokenSymbol || "projeto"} não passou por TODOS os critérios da estratégia no momento da entrada.`, "blocked", {
         tokenSymbol: candidate?.tokenSymbol || "?",
         chainId: candidate?.chainId || "unknown",
-        pairAddress: candidate?.pairAddress || ""
+        pairAddress: candidate?.pairAddress || "",
+        liquidityUsd: candidateLiquidity,
+        volume24hUsd: candidateVolume24h,
+        buys5m: candidateBuys5m,
+        sells5m: candidateSells5m,
+        priceChange5m: candidateM5
       });
       return;
     }
