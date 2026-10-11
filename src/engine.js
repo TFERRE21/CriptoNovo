@@ -417,6 +417,16 @@ class PaperEngine {
           Number(result.entryScore || 0) >= 3 &&
           Number(result.ageMinutes) >= 0 &&
           Number(result.ageMinutes) <= 1440;
+        const totalVariationPct = Number(result.priceChange1h || 0);
+        const isExtremePump = totalVariationPct >= 1000;
+        const isMicroLiquidity = Number(result.liquidityUsd || 0) < 1500 || Number(result.volume24hUsd || 0) < 5000;
+        const strategySegment = isExtremePump && isMicroLiquidity
+          ? "PUMP_EXTREMO_BAIXA_LIQUIDEZ"
+          : result.liquidityUsd >= 15000 && result.volume24hUsd >= 50000 && result.buys5m > result.sells5m
+            ? "MOMENTUM_COM_LIQUIDEZ"
+            : result.isFreshPair
+              ? "LANCAMENTO_EM_OBSERVACAO"
+              : "MOMENTUM_NAO_CONFIRMADO";
         const candidate = {
           id: pairKey, chainId, pairAddress: pair.pairAddress,
           tokenAddress: result.token?.address || "",
@@ -433,6 +443,7 @@ class PaperEngine {
           buys5m: result.buys5m, sells5m: result.sells5m, volume5mUsd: result.volume5mUsd,
           priceChange5m: result.priceChange5m, priceChange15m: result.priceChange15m, priceChange1h: result.priceChange1h,
           buySellRatio: result.buySellRatio, buySellRatio5m: result.buySellRatio5m, entryScore: result.entryScore,
+          strategySegment,
           winnerPatternCompatible, approved: entryAllowed,
           reasons: [...result.reasons, ...(!winnerPatternCompatible ? ["Padrão vencedor não confirmado — entrada bloqueada"] : [])],
           status: entryAllowed ? (result.isFreshPair ? "MOEDA NOVA — SINAL CONFIRMADO" : "APROVADO — MOMENTUM CONFIRMADO") : "BLOQUEADO",
