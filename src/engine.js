@@ -634,14 +634,28 @@ class PaperEngine {
       const chainId = String(position.chainId || "bsc").toLowerCase();
       // Migração de segurança: posições simuladas antigas sem prova de compatibilidade não podem continuar como entradas válidas.
       const f = position.entryFeatures || {};
+      const isFreshEntry = f.isFreshPair === true;
+      const freshLiquidityFloor = chainId === "ethereum" ? numEnv("MIN_FRESH_LIQUIDITY_USD", 1800)
+        : chainId === "bsc" ? numEnv("BSC_MIN_LIQUIDITY_USD", 1500)
+        : numEnv("SOL_MIN_LIQUIDITY_USD", 2000);
+      const freshMaxMove5m = chainId === "ethereum" ? numEnv("MAX_FRESH_PRICE_CHANGE_5M_PCT", 12)
+        : chainId === "bsc" ? numEnv("BSC_MAX_PRICE_CHANGE_5M_PCT", 15)
+        : numEnv("SOL_MAX_PRICE_CHANGE_5M_PCT", 20);
       const legacyEntryCompatible =
         /^https?:\/\//i.test(String(position.officialWebsite || f.officialWebsite || "")) &&
-        Number(f.liquidityUsd || 0) >= numEnv("WINNER_PATTERN_MIN_LIQUIDITY_USD", 15000) &&
-        Number(f.volume24hUsd || 0) >= numEnv("WINNER_PATTERN_MIN_VOLUME_24H_USD", 50000) &&
-        Number(f.buys5m || 0) + Number(f.sells5m || 0) >= numEnv("WINNER_PATTERN_MIN_TXNS_5M", 4) &&
-        Number(f.buys5m || 0) > Number(f.sells5m || 0) &&
-        Number(f.priceChange5m || 0) > 0 &&
-        Number(f.priceChange5m || 0) <= numEnv("WINNER_PATTERN_MAX_PRICE_CHANGE_5M_PCT", 20);
+        (isFreshEntry
+          ? Number(f.liquidityUsd || 0) >= freshLiquidityFloor &&
+            Number(f.volume5mUsd || 0) >= numEnv("MIN_FRESH_VOLUME_5M_USD", 500) &&
+            Number(f.buys5m || 0) + Number(f.sells5m || 0) >= numEnv("WINNER_PATTERN_MIN_TXNS_5M", 4) &&
+            Number(f.buys5m || 0) > Number(f.sells5m || 0) &&
+            Number(f.priceChange5m || 0) > 0 &&
+            Number(f.priceChange5m || 0) <= freshMaxMove5m
+          : Number(f.liquidityUsd || 0) >= numEnv("WINNER_PATTERN_MIN_LIQUIDITY_USD", 15000) &&
+            Number(f.volume24hUsd || 0) >= numEnv("WINNER_PATTERN_MIN_VOLUME_24H_USD", 50000) &&
+            Number(f.buys5m || 0) + Number(f.sells5m || 0) >= numEnv("WINNER_PATTERN_MIN_TXNS_5M", 4) &&
+            Number(f.buys5m || 0) > Number(f.sells5m || 0) &&
+            Number(f.priceChange5m || 0) > 0 &&
+            Number(f.priceChange5m || 0) <= numEnv("WINNER_PATTERN_MAX_PRICE_CHANGE_5M_PCT", 20));
       if (!legacyEntryCompatible) {
         this.closePosition(position, Number(position.lastPriceUsd || position.entryPriceUsd || 0), "ENCERRADA_FILTRO_ESTRATEGIA");
         this.addLog(`POSIÇÃO SIMULADA ENCERRADA POR SEGURANÇA: ${position.tokenSymbol} não tem comprovação de compatibilidade na entrada.`, "blocked", {tokenSymbol: position.tokenSymbol, chainId, pairAddress: position.pairAddress});
