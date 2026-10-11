@@ -268,15 +268,8 @@ class PaperEngine {
     this.polling = true;
     try {
       // Search endpoint is approximate. Query several terms each cycle instead of repeatedly seeing only the same WBNB results.
-      const queries = ["WBNB USDT", "WBNB USDC", "BNB", "PancakeSwap", "WETH USDC", "WETH USDT", "USDC WETH", "USDT WETH", "ETH USDC", "ETH USDT", "PEPE WETH", "PEPE", "SHIB WETH", "SHIB", "LINK WETH", "LINK", "UNI WETH", "UNI", "AAVE WETH", "Uniswap", "SOL USDC", "SOL USDT", "Raydium", "Solana"];
-      const results = await Promise.all(queries.map(async q => {
-        const response = await fetch(`https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(q)}`, {
-          headers: { accept: "application/json" }, signal: AbortSignal.timeout(12000)
-        });
-        if (!response.ok) throw new Error(`DexScreener (${q}) respondeu HTTP ${response.status}`);
-        const data = await response.json();
-        return Array.isArray(data.pairs) ? data.pairs : [];
-      }));
+      // Não pesquisar tickers/moedas populares por palavras-chave; descobrir somente projetos novos via feeds recentes e pools recém-criados.
+      const results = [];
       // Fonte adicional de descoberta on-chain: GeckoTerminal, independente dos feeds DexScreener.
       const fetchGeckoPools = async network => {
         try {
@@ -387,8 +380,8 @@ class PaperEngine {
       this.state.pairsAnalyzed = Number(this.state.pairsAnalyzed || 0) + pairs.length;
       const chainCounts = pairs.reduce((acc, pair) => { const chain = String(pair.chainId || "unknown").toLowerCase(); acc[chain] = (acc[chain] || 0) + 1; return acc; }, {});
       const eligibleCounts = pairs.reduce((acc, pair) => { const chain = String(pair.chainId || "unknown").toLowerCase(); const verdict = evaluatePair(pair, now).approved ? "aprovados" : "bloqueados"; acc[chain] ||= { aprovados: 0, bloqueados: 0 }; acc[chain][verdict]++; return acc; }, {});
-      this.addLog(`Consulta multirrede: ${pairs.length} pares únicos — ${Object.entries(chainCounts).map(([chain, count]) => `${chain}: ${count}`).join(", ") || "nenhum par retornado"}.`, "scan");
-      this.addLog(`Filtros por rede: ${Object.entries(eligibleCounts).map(([chain, counts]) => `${chain}: ${counts.aprovados} aprovados / ${counts.bloqueados} bloqueados`).join("; ") || "sem dados"}.`, "scan");
+      this.addLog(`Monitor de projetos novos: ${pairs.length} projetos únicos encontrados nas fontes de descoberta recente.`, "scan");
+      this.addLog(`Validação dos projetos novos concluída: ${Object.values(eligibleCounts).reduce((sum, counts) => sum + counts.aprovados + counts.bloqueados, 0)} projetos avaliados.`, "scan");
       const candidatesById = new Map(this.state.candidates.map(item => [String(item.id).toLowerCase(), item]));
       for (const pair of pairs) {
         const address = String(pair.pairAddress || "").toLowerCase();
