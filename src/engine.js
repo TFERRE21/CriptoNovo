@@ -457,6 +457,15 @@ class PaperEngine {
     }
   }
   openPaperPosition(candidate) {
+    // Trava final de segurança: nenhuma chamada pode abrir posição sem aprovação explícita do motor e do padrão vencedor.
+    if (candidate?.approved !== true || candidate?.winnerPatternCompatible !== true) {
+      this.addLog(`ENTRADA BLOQUEADA: ${candidate?.tokenSymbol || "projeto"} não está compatível com a estratégia vencedora.`, "blocked", {
+        tokenSymbol: candidate?.tokenSymbol || "?",
+        chainId: candidate?.chainId || "unknown",
+        pairAddress: candidate?.pairAddress || ""
+      });
+      return;
+    }
     this.state.experiment = { targetEntries: 60, entriesOpened: 0, completed: false, startedAt: null, ...(this.state.experiment || {}) };
     const maxOpen = numEnv("MAX_OPEN_POSITIONS", 6);
     const totalEntries = Number(this.state.experiment.entriesOpened || 0);
