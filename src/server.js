@@ -17,6 +17,14 @@ app.put("/api/settings", async (req, res) => {
 app.post("/api/start", async (_req, res) => { await engine.start(); res.json({ ok: true, state: engine.snapshot() }); });
 app.post("/api/stop", async (_req, res) => { await engine.stop(); res.json({ ok: true, state: engine.snapshot() }); });
 app.post("/api/reset", async (_req, res) => { await engine.reset(); res.json({ ok: true, state: engine.snapshot() }); });
+app.post("/api/candidates/:id/buy", async (req, res) => {
+  try {
+    const result = engine.manualStrategyEntry(req.params.id);
+    res.json({ ...result, state: engine.snapshot() });
+  } catch (error) {
+    res.status(400).json({ ok: false, error: error.message || "Compra simulada bloqueada." });
+  }
+});
 app.post("/api/candidates/:id/simulate-entry", async (req, res) => {
   try {
     const amountUsd = Number(req.body?.amountUsd ?? 10);
