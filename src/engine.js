@@ -219,10 +219,14 @@ class PaperEngine {
     this.state = await loadState();
     // Meta líquida da estratégia Solana fixada em 10%, inclusive para posições já abertas.
     this.state.settings = { ...defaultSettings(), ...(this.state.settings || {}) };
-    this.state.settings.solana = { ...defaultSettings().solana, ...(this.state.settings.solana || {}), takeProfitNetPct: 10, stopLossEnabled: false };
-    for (const position of this.state.positions.filter(p => String(p.chainId || "").toLowerCase() === "solana" && p.status === "OPEN")) {
-      position.takeProfitNetPctAtEntry = 10;
+    // Simulação global: US$10 por projeto e stop-loss desativado em todas as redes.
+    for (const chain of CHAIN_IDS) {
+      this.state.settings[chain] = { ...defaultSettings()[chain], ...(this.state.settings[chain] || {}), entryUsd: 10, stopLossEnabled: false };
+    }
+    this.state.settings.solana.takeProfitNetPct = 10;
+    for (const position of this.state.positions.filter(p => p.status === "OPEN")) {
       position.stopLossEnabledAtEntry = false;
+      if (String(position.chainId || "").toLowerCase() === "solana") position.takeProfitNetPctAtEntry = 10;
     }
     // Keep the monitor running across dashboard navigation and refreshes.
     this.state.running = true;
@@ -416,9 +420,8 @@ class PaperEngine {
   async markToMarket() {
     for (const position of this.state.positions.filter(p => p.status === "OPEN")) {
       const chainId = String(position.chainId || "bsc").toLowerCase();
-      // Solana: sem stop-loss e sem encerramento por tempo; mantém posição até atingir a meta.
-      const maxHoldMs = chainId === "solana" ? Infinity : numEnv("MAX_HOLD_MINUTES", 45) * 60000;
-      const expired = Date.now() - new Date(position.openedAt).getTime() >= maxHoldMs;
+      // Nenhuma rede usa stop-loss nem encerramento por tempo: posição virtual fica aberta até a meta de lucro.
+      const expired = false;
       let priceUpdated = false;
       try {
         const url = `https://api.dexscreener.com/latest/dex/pairs/${encodeURIComponent(chainId)}/${encodeURIComponent(position.pairAddress)}`;
@@ -520,7 +523,7 @@ class PaperEngine {
       const stopLossNetPct = Number(item.stopLossNetPct ?? 2.5);
       if (!Number.isFinite(entryUsd) || entryUsd < 1 || entryUsd > 1000000) throw new Error(`Entrada de ${chain} deve ficar entre US$1 e US$1.000.000.`);
       if (!Number.isFinite(takeProfitNetPct) || takeProfitNetPct < 0.1 || takeProfitNetPct > 500) throw new Error(`Meta de ganho de ${chain} deve ficar entre 0,1% e 500%.`);
-      next[chain] = { entryUsd, takeProfitNetPct, stopLossEnabled: false, stopLossNetPct };
+      next[chain] = { entryUsd: 10, takeProfitNetPct, stopLossEnabled: false, stopLossNetPct };
     }
     this.state.settings = next;
     this.state.settingsUpdatedAt = new Date().toISOString();
@@ -544,7 +547,7 @@ class PaperEngine {
       closedTradesCount: this.state.trades.length, experiment: { targetEntries: 60, entriesOpened: 0, completed: false, ...(this.state.experiment || {}) }, realizedPnlUsd: Number(realizedPnlUsd.toFixed(4)),
       settings: { ...defaultSettings(), ...(this.state.settings || {}) },
       settingsUpdatedAt: this.state.settingsUpdatedAt || null,
-      engineBuild: "solana-target-10pct-2026-10-10",
+      engineBuild: "top20-10usd-no-stop-2026-10-10",
       targetNetPct: numEnv("TAKE_PROFIT_NET_PCT", 4), mode: "PAPER" };
   }
 }
