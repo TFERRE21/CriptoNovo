@@ -433,14 +433,17 @@ class PaperEngine {
         if (isNew) {
           this.state.candidates.unshift(candidate);
           seen.add(pairKey);
-          if (result.approved) this.addLog(`ENTRADA QUALIFICADA (${candidate.chainId}): ${candidate.tokenSymbol} — ${candidate.strategy || (candidate.isFreshPair ? "MOEDA RECENTE" : "PAR ESTABELECIDO")}; score ${candidate.entryScore}/7; m5 ${candidate.priceChange5m}%; m15 ${candidate.priceChange15m}%; h1 ${candidate.priceChange1h}%; compras/vendas m5 ${Number(candidate.buySellRatio5m || 0).toFixed(2)}x; liquidez US${candidate.liquidityUsd.toFixed(0)}.`, 'approved', { tokenSymbol: candidate.tokenSymbol, chainId: candidate.chainId, pairAddress: candidate.pairAddress, entryScore: candidate.entryScore });
-          else if (this.state.candidates.length < 20) this.addLog(`Par bloqueado (${candidate.chainId}): ${candidate.tokenSymbol} — ${result.reasons.join('; ')}.`, 'blocked', { tokenSymbol: candidate.tokenSymbol, chainId: candidate.chainId });
+          if (entryAllowed) this.addLog(`SINAL COMPATÍVEL (${candidate.chainId}): ${candidate.tokenSymbol} — aprovado pelo motor e pelo padrão vencedor; score ${candidate.entryScore}/7; m5 ${candidate.priceChange5m}%; m15 ${candidate.priceChange15m}%; h1 ${candidate.priceChange1h}%; compras/vendas m5 ${Number(candidate.buySellRatio5m || 0).toFixed(2)}x; liquidez US${candidate.liquidityUsd.toFixed(0)}.`, 'approved', { tokenSymbol: candidate.tokenSymbol, chainId: candidate.chainId, pairAddress: candidate.pairAddress, entryScore: candidate.entryScore });
+          else if (this.state.candidates.length < 20) this.addLog(`ENTRADA BLOQUEADA (${candidate.chainId}): ${candidate.tokenSymbol} — ${candidate.reasons.join('; ')}.`, 'blocked', { tokenSymbol: candidate.tokenSymbol, chainId: candidate.chainId, pairAddress: candidate.pairAddress });
         } else {
           const existing = candidatesById.get(pairKey);
           if (existing) Object.assign(existing, candidate);
         }
         // Evaluate entry signals on every poll, not only the first time a pair is discovered.
-        if (this.state.running && entryAllowed) this.openPaperPosition(candidate);
+        // A única chamada que pode abrir posição exige aprovação total e o padrão vencedor.
+        if (this.state.running && entryAllowed === true && candidate.approved === true && candidate.winnerPatternCompatible === true) {
+          this.openPaperPosition(candidate);
+        }
       }
       this.state.seenPairAddresses = [...seen].slice(-5000);
       this.state.candidates = this.state.candidates.slice(0, 500);
