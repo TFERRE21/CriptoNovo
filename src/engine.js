@@ -9,7 +9,7 @@ const SUPPORTED_CHAINS = new Set(CHAIN_IDS);
 const chainBalances = amount => Object.fromEntries(CHAIN_IDS.map(chain => [chain, Number(amount)]));
 const defaultSettings = () => Object.fromEntries(CHAIN_IDS.map(chain => [chain, {
   entryUsd: Number(process.env.PAPER_ORDER_USD || 10),
-  takeProfitNetPct: Number(process.env.TAKE_PROFIT_NET_PCT || 4),
+  takeProfitNetPct: chain === "solana" ? 10 : Number(process.env.TAKE_PROFIT_NET_PCT || 4),
   stopLossEnabled: false,
   stopLossNetPct: Number(process.env.STOP_LOSS_NET_PCT || 2.5)
 }]));
@@ -217,6 +217,13 @@ class PaperEngine {
   constructor() { this.state = null; this.timer = null; this.polling = false; }
   async init() {
     this.state = await loadState();
+    // Meta líquida da estratégia Solana fixada em 10%, inclusive para posições já abertas.
+    this.state.settings = { ...defaultSettings(), ...(this.state.settings || {}) };
+    this.state.settings.solana = { ...defaultSettings().solana, ...(this.state.settings.solana || {}), takeProfitNetPct: 10, stopLossEnabled: false };
+    for (const position of this.state.positions.filter(p => String(p.chainId || "").toLowerCase() === "solana" && p.status === "OPEN")) {
+      position.takeProfitNetPctAtEntry = 10;
+      position.stopLossEnabledAtEntry = false;
+    }
     // Keep the monitor running across dashboard navigation and refreshes.
     this.state.running = true;
     this.state.startedAt = this.state.startedAt || new Date().toISOString();
@@ -524,7 +531,7 @@ class PaperEngine {
       closedTradesCount: this.state.trades.length, experiment: { targetEntries: 60, entriesOpened: 0, completed: false, ...(this.state.experiment || {}) }, realizedPnlUsd: Number(realizedPnlUsd.toFixed(4)),
       settings: { ...defaultSettings(), ...(this.state.settings || {}) },
       settingsUpdatedAt: this.state.settingsUpdatedAt || null,
-      engineBuild: "solana-99pct-no-stop-no-time-2026-10-10",
+      engineBuild: "solana-target-10pct-2026-10-10",
       targetNetPct: numEnv("TAKE_PROFIT_NET_PCT", 4), mode: "PAPER" };
   }
 }
