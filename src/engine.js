@@ -472,6 +472,7 @@ class PaperEngine {
     const strictWinnerGate =
       candidate?.approved === true &&
       candidate?.winnerPatternCompatible === true &&
+      Number(candidate?.entryScore || 0) >= 3 &&
       /^https?:\/\//i.test(candidateWebsite) &&
       candidateLiquidity >= numEnv("WINNER_PATTERN_MIN_LIQUIDITY_USD", 15000) &&
       candidateVolume24h >= numEnv("WINNER_PATTERN_MIN_VOLUME_24H_USD", 50000) &&
