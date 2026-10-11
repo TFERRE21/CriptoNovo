@@ -45,50 +45,22 @@ main{max-width:1400px;margin:auto;padding:28px 18px}header{display:flex;align-it
   #earlyProjectTotals,#positionsPanel #realizedSummary{grid-template-columns:1fr!important}
   #earlyProjectTotals>.card,#positionsPanel #realizedSummary>.card{aspect-ratio:auto!important;min-height:125px!important}
 }
-/* Layout final: métricas e posições em cards legíveis */
-#earlyProjectTotals{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))!important;gap:16px!important}
-#earlyProjectTotals>.card{aspect-ratio:1/1!important;min-height:220px!important;max-width:320px!important;width:100%!important;display:flex!important;flex-direction:column!important;justify-content:center!important;gap:14px!important;padding:24px!important;border-radius:16px!important}
-#earlyProjectTotals>.card .metric{font-size:clamp(22px,2vw,30px)!important;line-height:1.2!important}
-#earlyProjectTotals>.card .label{font-size:13px!important}
-#positionsPanel #realizedSummary{display:grid!important;grid-template-columns:repeat(3,minmax(220px,1fr))!important;gap:16px!important}
-#positionsPanel #realizedSummary>.card{aspect-ratio:1/1!important;min-height:220px!important;max-width:320px!important;width:100%!important;display:flex!important;flex-direction:column!important;justify-content:center!important;gap:14px!important;padding:24px!important;border-radius:16px!important}
-#positionsPanel #realizedSummary>.card .metric{font-size:clamp(22px,2vw,30px)!important;line-height:1.2!important}
-#positionsPanel #realizedSummary>.card .label{font-size:13px!important}
-#positions.position-grid{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr))!important;gap:14px!important}
-#positionsPanel .position-card{display:block!important;width:100%;min-height:180px;padding:18px!important;border-radius:14px!important;background:#111c2e!important;border:1px solid #2a3c57!important}
-#positionsPanel .position-card-head strong{font-size:18px!important}
-#positionsPanel .position-metrics{grid-template-columns:repeat(2,minmax(0,1fr))!important;gap:14px!important}
-#positionsPanel .position-card-foot{margin-top:14px;padding-top:14px}
-#positionsPanel .position-card-foot button{display:inline-flex!important;min-width:130px;justify-content:center;visibility:visible!important;opacity:1!important}
-#positionsPanel .empty{padding:20px;text-align:center}
-@media(max-width:640px){#earlyProjectTotals{grid-template-columns:repeat(2,minmax(0,1fr))!important}#earlyProjectTotals>.card{min-height:180px!important;max-width:none!important;padding:16px!important}#positionsPanel #realizedSummary{grid-template-columns:repeat(2,minmax(0,1fr))!important}#positionsPanel #realizedSummary>.card{min-height:180px!important;max-width:none!important;padding:16px!important}#positions.position-grid{grid-template-columns:1fr!important}}#positionsPanel #realizedSummary{grid-template-columns:repeat(2,minmax(0,1fr))!important}#positions.position-grid{grid-template-columns:1fr!important}}
-/* Cards responsivos para posições e métricas realizadas */
-#realizedSummary.cards{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(190px,1fr))!important;gap:12px!important}
-#positions.position-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px}
-.position-card{border:1px solid var(--border,#26364f);border-radius:12px;padding:14px;background:var(--panel,#111c2e);min-width:0}
-.position-card-head,.position-card-foot{display:flex;align-items:center;justify-content:space-between;gap:10px}
-.position-metrics{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px;margin:14px 0}
-.position-card-foot{border-top:1px solid var(--border,#26364f);padding-top:10px}
-#positionsPanel .tablewrap{overflow:visible}
-#positionsPanel #positions{display:grid!important}
-/* Painel focado: monitoramento de novos projetos + posições abertas/vendas */ main > section.grid:not(#earlyProjectTotals), #settingsPanel, main > section.panel:not(#earlyProjectsPanel):not(#positionsPanel), .two > .panel:first-child, .right-stack > .panel:first-child { display:none !important; } #earlyProjectsPanel, #earlyProjectTotals, section.two, .right-stack, .right-stack > .panel:last-child { display:block !important; } #earlyProjects { }
-/* OVERRIDE FINAL: cartões financeiros alinhados em linha */
-#earlyProjectTotals{display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;width:100%!important;max-width:100%!important;margin:12px 0 18px!important;gap:12px!important;align-items:stretch!important}
-#earlyProjectTotals>.card{display:flex!important;flex-direction:column!important;aspect-ratio:1/1!important;min-width:0!important;width:100%!important;max-width:none!important;min-height:0!important;padding:clamp(12px,1.5vw,22px)!important;justify-content:center!important;box-sizing:border-box!important}
-#earlyProjectTotals>.card .metric{font-size:clamp(16px,1.5vw,26px)!important;overflow-wrap:anywhere!important}
-#earlyProjectTotals>.card .label{font-size:clamp(10px,.85vw,12px)!important}
-@media(max-width:1100px){#earlyProjectTotals{grid-template-columns:repeat(3,minmax(0,1fr))!important}}
-@media(max-width:700px){#earlyProjectTotals{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
-@media(max-width:420px){#earlyProjectTotals{grid-template-columns:1fr!important}#earlyProjectTotals>.card{aspect-ratio:auto!important;min-height:110px!important}}
-/* Botões de simulação destacados e sempre visíveis quando aplicáveis */
-#earlyProjects td:last-child{min-width:175px!important}
-#earlyProjects [data-simulate-entry],#positions [data-sell-position]{display:inline-flex!important;align-items:center!important;justify-content:center!important;visibility:visible!important;opacity:1!important;white-space:normal!important;min-height:38px!important;padding:9px 12px!important;font-size:12px!important;font-weight:700!important;border-radius:8px!important;cursor:pointer!important}
-#earlyProjects [data-simulate-entry]{background:#16c79a!important;color:#071b19!important;border:1px solid #16c79a!important}
-#positions [data-sell-position],#earlyProjects [data-sell-position]{background:#ff667d!important;color:#210910!important;border:1px solid #ff667d!important}
-/* Ações manuais: comprar somente quando compatível */
-#earlyProjects td:last-child{min-width:160px!important}
-#earlyProjects [data-manual-buy],#earlyProjects button[disabled]{display:inline-flex!important;align-items:center!important;justify-content:center!important;min-height:38px!important;border-radius:8px!important;font-weight:700!important;white-space:normal!important}
-#earlyProjects [data-manual-buy]{background:#16c79a!important;color:#071b19!important;border:1px solid #16c79a!important}
+/* Layout consolidado: evitar regras duplicadas e manter a página organizada */
+#positionsPanel{display:block!important;width:100%;margin:14px 0 18px!important}
+#positionsPanel #realizedSummary{display:grid!important;grid-template-columns:repeat(3,minmax(0,1fr))!important;gap:12px!important;margin:12px 0!important}
+#positionsPanel #realizedSummary>.card{width:auto!important;max-width:none!important;min-width:0!important;min-height:105px!important;aspect-ratio:auto!important;padding:16px!important;display:flex!important;flex-direction:column!important;justify-content:center!important}
+#positionsPanel #positions.position-grid{display:grid!important;grid-template-columns:repeat(auto-fit,minmax(280px,1fr))!important;gap:12px!important}
+#positionsPanel .position-card{width:100%!important;min-width:0!important}
+#earlyProjectTotals{display:grid!important;grid-template-columns:repeat(5,minmax(0,1fr))!important;width:100%!important;max-width:none!important;gap:12px!important;margin:12px 0 18px!important}
+#earlyProjectTotals>.card{width:auto!important;max-width:none!important;min-width:0!important;min-height:120px!important;aspect-ratio:auto!important;padding:16px!important;display:flex!important;flex-direction:column!important;justify-content:center!important}
+#earlyProjectTotals>.card .metric{font-size:clamp(18px,1.7vw,26px)!important;line-height:1.25!important;overflow-wrap:anywhere!important}
+#earlyProjectsPanel{display:block!important;width:100%!important}
+#earlyProjectsPanel .tablewrap{max-width:100%;overflow:auto}
+main>section.grid:not(#earlyProjectTotals){display:grid!important}
+#settingsPanel{display:none!important}
+@media(max-width:1000px){#earlyProjectTotals{grid-template-columns:repeat(3,minmax(0,1fr))!important}}
+@media(max-width:760px){#positionsPanel #realizedSummary{grid-template-columns:repeat(2,minmax(0,1fr))!important}#earlyProjectTotals{grid-template-columns:repeat(2,minmax(0,1fr))!important}}
+@media(max-width:480px){#earlyProjectTotals{grid-template-columns:1fr!important}#positionsPanel #realizedSummary{grid-template-columns:1fr!important}#positionsPanel #positions.position-grid{grid-template-columns:1fr!important}}
 </style></head><body><main>
 <header><div class="brand"><div class="logo">C</div><div><h1>CriptoNovo</h1><p>BNB Chain · Ethereum · Solana</p></div></div><div class="actions"><button id="refresh">Atualizar</button><button id="start" class="primary">Iniciar simulação</button><button id="reset" class="danger">Zerar e reiniciar teste</button><button id="stop" class="danger">Parar</button><button id="testPebble" type="button" style="display:inline-flex!important;visibility:visible!important;opacity:1!important;background:#16c79a!important;color:#071b19!important;border:2px solid #16c79a!important;padding:10px 14px!important;font-weight:800!important;min-height:40px!important;border-radius:8px!important">▶ Testar PEBBLE · US$ 10</button></div></header>
 <div class="notice"><strong>Modo simulação:</strong> não envia transações nem acessa carteiras. “Aprovado” significa apenas que passou pelos filtros básicos; não representa garantia de segurança ou lucro.</div>
@@ -126,7 +98,7 @@ main{max-width:1400px;margin:auto;padding:28px 18px}header{display:flex;align-it
 </div><div class="settings-actions"><button type="submit" class="primary" id="saveSettings">Salvar configurações</button><span id="settingsMessage">Carregando configurações...</span></div></form></section>
 <section class="two">
 <div class="panel"><div class="section-head"><h2>Novos pares detectados</h2><span class="pill" id="mode">PAPER</span></div><div class="tablewrap"><table><thead><tr><th>Token / par</th><th>Preço</th><th>Liquidez</th><th>Idade</th><th>Filtro</th></tr></thead><tbody id="candidates"></tbody></table><div class="empty" id="empty">Inicie o monitor para consultar pares.</div></div></div>
-<div class="right-stack"><div class="panel activity-panel"><div class="section-head"><h2>Log ao vivo do robô</h2><span class="pill" id="logCount">0 eventos</span></div><div id="activityLogs" class="loglist"><div class="empty">Aguardando eventos do monitor...</div></div></div><div class="panel"><div class="section-head"><h2>Operações simuladas</h2><span class="pill" id="openCount">0 abertas</span></div><div id="realizedSummary" class="cards" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin:12px 0"><div class="card"><div class="label">Ganhos realizados</div><div id="realizedGains" class="metric good">US$ 0,00</div><div id="realizedGainsBRL" class="label">R$ 0,00</div></div><div class="card"><div class="label">Perdas realizadas</div><div id="realizedLosses" class="metric bad">US$ 0,00</div><div id="realizedLossesBRL" class="label">R$ 0,00</div></div><div class="card"><div class="label">Saldo realizado líquido</div><div id="realizedNet" class="metric">US$ 0,00</div><div id="realizedNetBRL" class="label">R$ 0,00</div></div></div><div class="tablewrap"><table><thead><tr><th>Token</th><th>Entrada</th><th>Valor atual (R$)</th><th>Projeção de saída</th><th>Ganho / perda</th><th>Ação</th></tr></thead><tbody id="positions"></tbody></table><div class="empty" id="emptyPos">Nenhuma posição virtual aberta.</div></div><h2 style="font-size:15px;margin-top:22px">Últimas operações encerradas</h2><div class="tablewrap"><table><thead><tr><th>Token</th><th>Motivo</th><th>Resultado</th></tr></thead><tbody id="trades"></tbody></table><div class="empty" id="emptyTrades">Sem operações encerradas.</div></div></div></div>
+<div class="right-stack"><div class="panel activity-panel"><div class="section-head"><h2>Log ao vivo do robô</h2><span class="pill" id="logCount">0 eventos</span></div><div id="activityLogs" class="loglist"><div class="empty">Aguardando eventos do monitor...</div></div></div></div></div>
 </section>
 <section class="panel" style="margin-top:14px"><div class="section-head"><h2>Último estado do serviço</h2><span class="label" id="lastPoll">Ainda não consultado</span></div><p id="error" class="bad"></p><p class="foot" id="configSummary">Parâmetros de risco configurados por rede. Prazo máximo e limites de posições continuam definidos pelo motor.</p></section>
 <p class="foot">Os dados podem atrasar ou estar incompletos. Nenhum filtro garante que um token seja seguro. Verifique sempre os contratos e a liquidez real.</p>
