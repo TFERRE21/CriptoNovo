@@ -427,38 +427,18 @@ class PaperEngine {
           : chainId === "bsc" ? numEnv("BSC_MAX_PRICE_CHANGE_5M_PCT", 15)
           : numEnv("SOL_MAX_PRICE_CHANGE_5M_PCT", 20);
         const freshProject = result.isFreshPair === true && Number(result.ageMinutes) >= 0 && Number(result.ageMinutes) <= 360;
-        const winnerPatternCompatible =
-          hasOfficialWebsiteForEntry &&
-          (freshProject
-            ? result.liquidityUsd >= freshLiquidityFloor &&
-              Number(result.volume5mUsd || 0) >= freshVolume5mFloor &&
-              result.buys5m + result.sells5m >= numEnv("WINNER_PATTERN_MIN_TXNS_5M", 4) &&
-              result.buys5m > result.sells5m &&
-              result.priceChange5m > 0 &&
-              result.priceChange5m <= freshMaxMove5m
-            : result.liquidityUsd >= numEnv("WINNER_PATTERN_MIN_LIQUIDITY_USD", 15000) &&
-              Number(pair.volume?.h24 || 0) >= numEnv("WINNER_PATTERN_MIN_VOLUME_24H_USD", 50000) &&
-              result.buys5m + result.sells5m >= numEnv("WINNER_PATTERN_MIN_TXNS_5M", 4) &&
-              result.buys5m > result.sells5m &&
-              result.priceChange5m > 0 &&
-              result.priceChange5m <= numEnv("WINNER_PATTERN_MAX_PRICE_CHANGE_5M_PCT", 20));
-        const entryAllowed =
-          result.approved === true &&
-          Array.isArray(result.reasons) && result.reasons.length === 0 &&
-          winnerPatternCompatible === true &&
-          Number(result.entryScorePct ?? 0) >= numEnv("MIN_ENTRY_SCORE_PCT", 70) &&
-          Number(result.ageMinutes) >= 0 &&
-          Number(result.ageMinutes) <= 1440 &&
-          hasOfficialWebsiteForEntry &&
-          (freshProject
-            ? Number(result.liquidityUsd || 0) >= freshLiquidityFloor &&
-              Number(result.volume5mUsd || 0) >= freshVolume5mFloor
-            : Number(result.liquidityUsd || 0) >= numEnv("WINNER_PATTERN_MIN_LIQUIDITY_USD", 15000) &&
-              Number(result.volume24hUsd || 0) >= numEnv("WINNER_PATTERN_MIN_VOLUME_24H_USD", 50000)) &&
-          Number(result.buys5m || 0) + Number(result.sells5m || 0) >= 4 &&
-          Number(result.buys5m || 0) > Number(result.sells5m || 0) &&
-          Number(result.priceChange5m || 0) > 0 &&
-          Number(result.priceChange5m || 0) <= freshMaxMove5m;
+        const hasUsablePrice = Number(result.priceUsd) > 0 && Boolean(result.token?.address) && Boolean(pair.pairAddress);
+        const ageIsValid = Number(result.ageMinutes) >= 0 && Number(result.ageMinutes) <= 1440;
+        // Estratégia única: score >= 70/100; preservar apenas travas básicas de integridade.
+        const entryReasons = [];
+        if (Number(result.entryScorePct ?? 0) < numEnv("MIN_ENTRY_SCORE_PCT", 70)) {
+          entryReasons.push(`Score abaixo de ${numEnv("MIN_ENTRY_SCORE_PCT", 70)}/100 (${Number(result.entryScorePct ?? 0)}/100)`);
+        }
+        if (!hasOfficialWebsiteForEntry) entryReasons.push("Sem site oficial verificável");
+        if (!hasUsablePrice) entryReasons.push("Preço ou endereço do token indisponível");
+        if (!ageIsValid) entryReasons.push("Idade do par fora do limite de 24 horas");
+        const winnerPatternCompatible = entryReasons.length === 0;
+        const entryAllowed = winnerPatternCompatible;
         const totalVariationPct = Number(result.priceChange1h || 0);
         const isExtremePump = totalVariationPct >= 1000;
         const isMicroLiquidity = Number(result.liquidityUsd || 0) < 1500 || Number(result.volume24hUsd || 0) < 5000;
@@ -487,7 +467,7 @@ class PaperEngine {
           buySellRatio: result.buySellRatio, buySellRatio5m: result.buySellRatio5m, entryScore: result.entryScore, entryScorePct: result.entryScorePct,
           strategySegment,
           winnerPatternCompatible, approved: entryAllowed,
-          reasons: [...result.reasons, ...(!winnerPatternCompatible ? ["Padrão vencedor não confirmado — entrada bloqueada"] : [])],
+          reasons: [...entryReasons],
           status: entryAllowed ? (result.isFreshPair ? "MOEDA NOVA — SINAL CONFIRMADO" : "APROVADO — MOMENTUM CONFIRMADO") : "BLOQUEADO",
           detectedAt: candidatesById.get(pairKey)?.detectedAt || new Date(now).toISOString(),
           lastSeenAt: new Date(now).toISOString()
@@ -504,7 +484,7 @@ class PaperEngine {
         }
         // Evaluate entry signals on every poll, not only the first time a pair is discovered.
         // A única chamada que pode abrir posição exige aprovação total e o padrão vencedor.
-        if (this.state.running && entryAllowed === true && candidate.approved === true && candidate.winnerPatternCompatible === true && candidate.strategySegment === "MOMENTUM_COM_LIQUIDEZ" && Array.isArray(candidate.reasons) && candidate.reasons.length === 0) {
+        if (this.state.running && entryAllowed === true && candidate.approved === true && candidate.winnerPatternCompatible === true && Number(candidate.entryScorePct ?? 0) >= numEnv("MIN_ENTRY_SCORE_PCT", 70) && Array.isArray(candidate.reasons) && candidate.reasons.length === 0) {
           this.openPaperPosition(candidate);
         }
       }
@@ -533,22 +513,14 @@ class PaperEngine {
     const strictWinnerGate =
       candidate?.approved === true &&
       candidate?.winnerPatternCompatible === true &&
-      candidate?.strategySegment === "MOMENTUM_COM_LIQUIDEZ" &&
       Number(candidate?.entryScorePct ?? 0) >= numEnv("MIN_ENTRY_SCORE_PCT", 70) &&
       Array.isArray(candidate?.reasons) && candidate.reasons.length === 0 &&
       Number(candidate?.ageMinutes) >= 0 &&
       Number(candidate?.ageMinutes) <= 1440 &&
       /^https?:\/\//i.test(candidateWebsite) &&
-      (candidate?.isFreshPair === true
-        ? candidateLiquidity >= (String(candidate.chainId).toLowerCase() === "ethereum" ? numEnv("MIN_FRESH_LIQUIDITY_USD", 1800) : String(candidate.chainId).toLowerCase() === "bsc" ? numEnv("BSC_MIN_LIQUIDITY_USD", 1500) : numEnv("SOL_MIN_LIQUIDITY_USD", 2000)) &&
-          Number(candidate.volume5mUsd || 0) >= numEnv("MIN_FRESH_VOLUME_5M_USD", 500) &&
-          candidateM5 <= (String(candidate.chainId).toLowerCase() === "ethereum" ? numEnv("MAX_FRESH_PRICE_CHANGE_5M_PCT", 12) : String(candidate.chainId).toLowerCase() === "bsc" ? numEnv("BSC_MAX_PRICE_CHANGE_5M_PCT", 15) : numEnv("SOL_MAX_PRICE_CHANGE_5M_PCT", 20))
-        : candidateLiquidity >= numEnv("WINNER_PATTERN_MIN_LIQUIDITY_USD", 15000) &&
-          candidateVolume24h >= numEnv("WINNER_PATTERN_MIN_VOLUME_24H_USD", 50000) &&
-          candidateM5 <= numEnv("WINNER_PATTERN_MAX_PRICE_CHANGE_5M_PCT", 20)) &&
-      candidateBuys5m + candidateSells5m >= numEnv("WINNER_PATTERN_MIN_TXNS_5M", 4) &&
-      candidateBuys5m > candidateSells5m &&
-      candidateM5 > 0;
+      Number(candidate?.priceUsd) > 0 &&
+      Boolean(candidate?.tokenAddress) &&
+      Boolean(candidate?.pairAddress);
     if (!strictWinnerGate) {
       this.addLog(`ENTRADA BLOQUEADA: ${candidate?.tokenSymbol || "projeto"} não passou por TODOS os critérios da estratégia no momento da entrada.`, "blocked", {
         tokenSymbol: candidate?.tokenSymbol || "?",
@@ -742,7 +714,7 @@ class PaperEngine {
     const chainId = String(candidate.chainId || "bsc").toLowerCase();
     const alreadyOpen = this.state.positions.some(p => p.status === "OPEN" && String(p.chainId || "bsc").toLowerCase() === chainId && String(p.pairAddress || "").toLowerCase() === String(candidate.pairAddress || "").toLowerCase());
     if (alreadyOpen) throw new Error("Este projeto já tem uma posição aberta.");
-    if (candidate.approved !== true || candidate.winnerPatternCompatible !== true || candidate.strategySegment !== "MOMENTUM_COM_LIQUIDEZ" || !Array.isArray(candidate.reasons) || candidate.reasons.length !== 0) {
+    if (candidate.approved !== true || candidate.winnerPatternCompatible !== true || Number(candidate.entryScorePct ?? 0) < numEnv("MIN_ENTRY_SCORE_PCT", 70) || !Array.isArray(candidate.reasons) || candidate.reasons.length !== 0) {
       this.addLog("COMPRA MANUAL BLOQUEADA: " + candidate.tokenSymbol + " não está compatível com a estratégia aprovada.", "blocked", {tokenSymbol:candidate.tokenSymbol,chainId,pairAddress:candidate.pairAddress});
       throw new Error("Fora do padrão. A compra manual respeita a estratégia e foi bloqueada.");
     }
