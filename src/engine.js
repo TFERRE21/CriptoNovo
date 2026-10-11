@@ -364,9 +364,11 @@ class PaperEngine {
       String(t.chainId || "bsc").toLowerCase() === chainId && Number(t.pnlUsd || 0) > 0
     );
     const configuredNotional = Number(networkSettings.entryUsd || 10);
-    const notional = hasProfitableTrade
+    // Solana: cada entrada usa 99% do saldo virtual livre da própria rede.
+    // As outras redes mantêm o comportamento configurado/composto já existente.
+    const notional = chainId === "solana"
       ? Number((availableBalance * 0.99).toFixed(2))
-      : configuredNotional;
+      : (hasProfitableTrade ? Number((availableBalance * 0.99).toFixed(2)) : configuredNotional);
     if (open.length >= maxOpen || open.filter(p => String(p.chainId || "bsc").toLowerCase() === chainId).length >= 3 || availableBalance < notional || notional < 1) return;
     if (open.some(p => String(p.chainId || "bsc").toLowerCase() === chainId && String(p.pairAddress || "").toLowerCase() === String(candidate.pairAddress || "").toLowerCase())) return;
     if (this.state.trades.some(t => String(t.chainId || "bsc").toLowerCase() === chainId && String(t.pairAddress || "").toLowerCase() === String(candidate.pairAddress || "").toLowerCase())) return;
@@ -389,12 +391,13 @@ class PaperEngine {
     this.state.experiment.entriesOpened = totalEntries + 1;
     this.state.experiment.startedAt = this.state.experiment.startedAt || new Date().toISOString();
     this.state.positions.unshift(position);
-    this.addLog(`ENTRADA SIMULADA: ${candidate.tokenSymbol} a ${candidate.priceUsd}; ordem virtual US${notional.toFixed(2)}${hasProfitableTrade ? " (99% do saldo disponível após lucro anterior)" : " (valor base configurado)"}.`, 'entry', { tokenSymbol: candidate.tokenSymbol, chainId, pct: position.estimatedNetPct, notionalUsd: notional, compounding: hasProfitableTrade });
+    this.addLog(`ENTRADA SIMULADA: ${candidate.tokenSymbol} a ${candidate.priceUsd}; ordem virtual US${notional.toFixed(2)}${chainId === "solana" ? " (99% do saldo livre Solana)" : (hasProfitableTrade ? " (99% do saldo disponível após lucro anterior)" : " (valor base configurado)")}.`, 'entry', { tokenSymbol: candidate.tokenSymbol, chainId, pct: position.estimatedNetPct, notionalUsd: notional, compounding: hasProfitableTrade || chainId === "solana" });
   }
   async markToMarket() {
     for (const position of this.state.positions.filter(p => p.status === "OPEN")) {
       const chainId = String(position.chainId || "bsc").toLowerCase();
-      const maxHoldMs = numEnv("MAX_HOLD_MINUTES", 45) * 60000;
+      // Solana: sem stop-loss e sem encerramento por tempo; mantém posição até atingir a meta.
+      const maxHoldMs = chainId === "solana" ? Infinity : numEnv("MAX_HOLD_MINUTES", 45) * 60000;
       const expired = Date.now() - new Date(position.openedAt).getTime() >= maxHoldMs;
       let priceUpdated = false;
       try {
@@ -521,7 +524,7 @@ class PaperEngine {
       closedTradesCount: this.state.trades.length, experiment: { targetEntries: 60, entriesOpened: 0, completed: false, ...(this.state.experiment || {}) }, realizedPnlUsd: Number(realizedPnlUsd.toFixed(4)),
       settings: { ...defaultSettings(), ...(this.state.settings || {}) },
       settingsUpdatedAt: this.state.settingsUpdatedAt || null,
-      engineBuild: "config-guard-2026-10-09",
+      engineBuild: "solana-99pct-no-stop-no-time-2026-10-10",
       targetNetPct: numEnv("TAKE_PROFIT_NET_PCT", 4), mode: "PAPER" };
   }
 }
