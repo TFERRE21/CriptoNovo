@@ -462,7 +462,7 @@ class PaperEngine {
         }
         // Evaluate entry signals on every poll, not only the first time a pair is discovered.
         // A única chamada que pode abrir posição exige aprovação total e o padrão vencedor.
-        if (this.state.running && entryAllowed === true && candidate.approved === true && candidate.winnerPatternCompatible === true) {
+        if (this.state.running && entryAllowed === true && candidate.approved === true && candidate.winnerPatternCompatible === true && candidate.strategySegment === "MOMENTUM_COM_LIQUIDEZ" && Array.isArray(candidate.reasons) && candidate.reasons.length === 0) {
           this.openPaperPosition(candidate);
         }
       }
@@ -491,6 +491,7 @@ class PaperEngine {
     const strictWinnerGate =
       candidate?.approved === true &&
       candidate?.winnerPatternCompatible === true &&
+      candidate?.strategySegment === "MOMENTUM_COM_LIQUIDEZ" &&
       Number(candidate?.entryScore || 0) >= 3 &&
       Array.isArray(candidate?.reasons) && candidate.reasons.length === 0 &&
       Number(candidate?.ageMinutes) >= 0 &&
