@@ -391,7 +391,7 @@ class PaperEngine {
         // Critério único para o selo COMPATÍVEL no painel e para permitir entrada.
         // Um projeto fora deste padrão nunca pode abrir posição, mesmo que outro filtro aprove o par.
         const officialSitesForEntry = Array.isArray(pair.info?.websites) ? pair.info.websites : [];
-        const hasOfficialWebsiteForEntry = officialSitesForEntry.some(site => /^https?:\\/\\//i.test(String(site?.url || "")));
+        const hasOfficialWebsiteForEntry = officialSitesForEntry.some(site => /^https?:\/\//i.test(String(site?.url || "")));
         const winnerPatternCompatible =
           hasOfficialWebsiteForEntry &&
           result.liquidityUsd >= numEnv("WINNER_PATTERN_MIN_LIQUIDITY_USD", 15000) &&
