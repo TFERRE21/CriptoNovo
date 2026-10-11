@@ -113,7 +113,9 @@ function evaluatePair(pair, now = Date.now()) {
       if (txns1h > 0 && buys1h / Math.max(sells1h, 1) < minBuyRatio) reasons.push(`Compras sem força suficiente (relação ${(buys1h / Math.max(sells1h, 1)).toFixed(2)}x)`);
       if (priceChange15m < numEnv("MIN_PRICE_CHANGE_15M_PCT", 0)) reasons.push("Tendência de 15 minutos fraca");
       if (priceChange1h < numEnv("MIN_PRICE_CHANGE_1H_PCT", 0)) reasons.push("Tendência de 1 hora insuficiente");
-      if (priceChange1h > numEnv("MAX_PRICE_CHANGE_1H_PCT", 15)) reasons.push("Alta excessiva em 1 hora");
+      // Não bloquear apenas pela alta acumulada de 1h: movimentos fortes podem continuar,
+      // mas a entrada ainda exige liquidez/volume, compras recentes e momentum de 5m/15m controlado.
+      // O limite de 1h deixa de ser bloqueador isolado para evitar perder projetos que aceleraram cedo.
     }
     if (!Number.isFinite(ageHours) || ageHours < minAge / 60 || ageHours > maxAge) reasons.push("Idade do par ausente ou fora do limite");
     if (!isFreshPair && priceChange5m > numEnv("MAX_PRICE_CHANGE_5M_PCT", 6)) reasons.push("Alta muito acelerada em 5 minutos; risco de comprar no topo");
@@ -127,7 +129,7 @@ function evaluatePair(pair, now = Date.now()) {
       buys5m > sells5m,
       priceChange5m > 0 && priceChange5m <= (isFreshPair ? 8 : 3),
       priceChange15m >= 0.5 && priceChange15m <= 5,
-      priceChange1h >= 1 && priceChange1h <= 10
+      priceChange1h >= 1
     ].filter(Boolean).length;
   } else if (chain === "bsc") {
     // BNB Chain: early launch momentum, but avoid the first chaotic seconds and extreme candles.
