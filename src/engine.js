@@ -408,7 +408,12 @@ class PaperEngine {
           result.buys5m > result.sells5m &&
           result.priceChange5m > 0 &&
           result.priceChange5m <= numEnv("WINNER_PATTERN_MAX_PRICE_CHANGE_5M_PCT", 20);
-        const entryAllowed = result.approved && winnerPatternCompatible;
+        // Gate definitivo: o motor base, o padrão vencedor e o score mínimo precisam aprovar.
+        // O status visual/retorno do token nunca pode, sozinho, disparar uma entrada.
+        const entryAllowed =
+          result.approved === true &&
+          winnerPatternCompatible === true &&
+          Number(result.entryScore || 0) >= 3;
         const candidate = {
           id: pairKey, chainId, pairAddress: pair.pairAddress,
           tokenAddress: result.token?.address || "",
@@ -473,6 +478,7 @@ class PaperEngine {
       candidate?.approved === true &&
       candidate?.winnerPatternCompatible === true &&
       Number(candidate?.entryScore || 0) >= 3 &&
+      Array.isArray(candidate?.reasons) && candidate.reasons.length === 0 &&
       /^https?:\/\//i.test(candidateWebsite) &&
       candidateLiquidity >= numEnv("WINNER_PATTERN_MIN_LIQUIDITY_USD", 15000) &&
       candidateVolume24h >= numEnv("WINNER_PATTERN_MIN_VOLUME_24H_USD", 50000) &&
