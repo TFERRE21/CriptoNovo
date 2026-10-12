@@ -1,5 +1,6 @@
 const fs = require("node:fs/promises");
 const path = require("node:path");
+const { randomUUID } = require("node:crypto");
 const initSqlJs = require("sql.js");
 
 const DATA_DIR = path.join(__dirname, "..", "data");
@@ -21,9 +22,15 @@ async function openDatabase() {
 }
 
 async function persistDatabase(db) {
-  const tmp = DB_FILE + ".tmp";
-  await fs.writeFile(tmp, Buffer.from(db.export()));
-  await fs.rename(tmp, DB_FILE);
+  // Cada gravação usa um temporário exclusivo para evitar colisões de rename.
+  const tmp = `${DB_FILE}.${process.pid}.${randomUUID()}.tmp`;
+  try {
+    await fs.writeFile(tmp, Buffer.from(db.export()));
+    await fs.rename(tmp, DB_FILE);
+  } catch (error) {
+    await fs.rm(tmp, { force: true }).catch(() => {});
+    throw error;
+  }
 }
 const WBNB = "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c";
 const CHAIN_IDS = ["bsc", "ethereum", "solana"];
@@ -67,7 +74,7 @@ async function loadState() {
   await saveState(initial);
   return initial;
 }
-async function saveState(state) {
+async function saveStateUnlocked(state) {
   await fs.mkdir(DATA_DIR, { recursive: true });
   const db = await openDatabase();
   const json = JSON.stringify(state);
@@ -78,6 +85,18 @@ async function saveState(state) {
   await fs.writeFile(tmp, JSON.stringify(state, null, 2));
   await fs.rename(tmp, STATE_FILE);
 }
+
+// Uma fila única evita gravações simultâneas no mesmo banco e no state.json.
+let stateSaveQueue = Promise.resolve();
+async function saveState(state) {
+  const pending = stateSaveQueue.then(
+    () => saveStateUnlocked(state),
+    () => saveStateUnlocked(state)
+  );
+  stateSaveQueue = pending.catch(() => {});
+  return pending;
+}
+
 function numEnv(name, fallback) {
   const n = Number(process.env[name]);
   return Number.isFinite(n) && n >= 0 ? n : fallback;
