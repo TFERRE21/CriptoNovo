@@ -760,6 +760,17 @@ class PaperEngine {
               // Trailing de lucro em degraus de 10 pontos percentuais:
               // ao atingir +10%, protege +10%; ao atingir +20%, protege +20%, etc.
               const currentNetPct = Number(position.estimatedNetPct);
+              // Proteção emergencial de risco: sair da simulação se a perda líquida estimada chegar a -10%.
+              // O valor é fixado na posição para que não dependa de configuração antiga.
+              const maxLossNetPct = Number(process.env.PAPER_MAX_LOSS_NET_PCT || 10);
+              position.maxLossNetPct = maxLossNetPct;
+              if (currentNetPct <= -maxLossNetPct) {
+                this.closePosition(position, price, "PROTECAO_PERDA_" + maxLossNetPct + "PCT");
+                this.addLog(`PROTEÇÃO DE PERDA SIMULADA: ${position.tokenSymbol}; resultado líquido estimado ${currentNetPct.toFixed(2)}%, limite -${maxLossNetPct}%. Posição encerrada para evitar agravamento da perda.`, "warning", {
+                  tokenSymbol: position.tokenSymbol, chainId, exitNetProfitPct: currentNetPct, maxLossNetPct
+                });
+                continue;
+              }
               const previousPeak = Number(position.maxNetProfitPct ?? -Infinity);
               position.maxNetProfitPct = Math.max(previousPeak, currentNetPct);
               const profitStep = Math.floor(position.maxNetProfitPct / 10) * 10;
