@@ -39,7 +39,8 @@ const port = Number(process.env.PORT || 3000);
 const server = app.listen(port, "0.0.0.0", () => {
   console.log(`CriptoNovo paper dashboard listening on :${port}`);
   engine.init().then(() => {
-    console.log("Continuous paper monitor initialized");
+    console.log("SQLite persistent history initialized (with JSON compatibility mirror)");
+    console.log("Continuous paper monitor initialized; live trading remains disabled.");
   }).catch(err => {
     console.error("Failed to initialize monitor:", err);
   });
