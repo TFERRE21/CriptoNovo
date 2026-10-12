@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="pt-BR">
 <head>
-<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="criptonovo-build" content="redeploy-2026-10-12-1"><meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="criptonovo-build" content="controls-diagnostic-2026-10-12-2"><meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <title>CriptoNovo · Paper Trading</title>
 <style>
 :root{color-scheme:dark;--bg:#0b1020;--panel:#121a2c;--line:#25334b;--muted:#93a4bd;--text:#eef4ff;--green:#34d399;--red:#fb7185;--blue:#60a5fa}
@@ -218,4 +218,36 @@ document.querySelector('#start').onclick=async()=>{try{await api('/api/start','P
 document.querySelector('#stop').onclick=async()=>{try{await api('/api/stop','POST');await refresh()}catch(e){alert(e.message)}};
 document.querySelector('#reset').onclick=async()=>{if(!confirm('Isso apagará o histórico e reiniciará o teste somente em BNB, Ethereum e Solana, com US$100 virtuais por rede (US$300 no total). Continuar?'))return;try{await api('/api/reset','POST');await refresh()}catch(e){alert(e.message)}};
 document.querySelector('#refresh').onclick=refresh;loadUsdBrl().then(refresh);refresh();setInterval(refresh,5000);
+</script>
+<script>
+(function(){
+  function showButtonError(message){
+    var el=document.getElementById('error');
+    if(el) el.textContent='Diagnóstico dos botões: '+message;
+  }
+  document.addEventListener('click', async function(event){
+    var button=event.target.closest('#start,#stop,#refresh,#saveSettings');
+    if(!button) return;
+    try {
+      if(button.id==='refresh'){
+        var r=await fetch('/api/state',{cache:'no-store'});
+        if(!r.ok) throw new Error('GET /api/state retornou HTTP '+r.status);
+        showButtonError('conexão com servidor OK; atualizando painel.');
+        return;
+      }
+      if(button.id==='start'||button.id==='stop'){
+        button.disabled=true;
+        var endpoint=button.id==='start'?'/api/start':'/api/stop';
+        var r=await fetch(endpoint,{method:'POST',headers:{'Content-Type':'application/json'},cache:'no-store'});
+        var body=await r.text();
+        if(!r.ok) throw new Error(endpoint+' retornou HTTP '+r.status+': '+body.slice(0,250));
+        showButtonError('comando enviado com sucesso ('+endpoint+'). Recarregue a página para confirmar o estado.');
+      }
+    } catch(err) {
+      showButtonError(err.message||String(err));
+    } finally {
+      button.disabled=false;
+    }
+  },true);
+})();
 </script></body></html>
