@@ -5,11 +5,12 @@ const { PaperEngine } = require("./engine");
 
 const app = express();
 const engine = new PaperEngine();
+let startupError = null;
 app.use(express.json({ limit: "100kb" }));
 app.use(express.static(path.join(__dirname, "..", "public")));
 
-app.get("/api/health", (_req, res) => res.json({ ok: true, mode: "PAPER", time: new Date().toISOString() }));
-app.get("/api/state", (_req, res) => res.json(engine.snapshot()));
+app.get("/api/health", (_req, res) => res.json({ ok: true, mode: "PAPER", time: new Date().toISOString(), running: Boolean(engine.state?.running), startupError, lastError: engine.state?.lastError || null, lastPollAt: engine.state?.lastPollAt || null, candidates: engine.state?.candidates?.length || 0 }));
+app.get("/api/state", (_req, res) => res.json({ ...engine.snapshot(), startupError }));
 app.put("/api/settings", async (req, res) => {
   try { const settings = await engine.updateSettings(req.body); res.json({ ok: true, settings }); }
   catch (error) { res.status(400).json({ ok: false, error: error.message || "Configurações inválidas." }); }
@@ -39,9 +40,11 @@ const port = Number(process.env.PORT || 3000);
 const server = app.listen(port, "0.0.0.0", () => {
   console.log(`CriptoNovo paper dashboard listening on :${port}`);
   engine.init().then(() => {
+    startupError = null;
     console.log("SQLite persistent history initialized (with JSON compatibility mirror)");
     console.log("Continuous paper monitor initialized; live trading remains disabled.");
   }).catch(err => {
+    startupError = err?.message || "Falha desconhecida ao inicializar o monitor";
     console.error("Failed to initialize monitor:", err);
   });
 });
