@@ -1,8 +1,30 @@
 const fs = require("node:fs/promises");
 const path = require("node:path");
+const initSqlJs = require("sql.js");
 
 const DATA_DIR = path.join(__dirname, "..", "data");
 const STATE_FILE = path.join(DATA_DIR, "state.json");
+const DB_FILE = path.join(DATA_DIR, "criptonovo.sqlite");
+let databasePromise = null;
+
+async function openDatabase() {
+  if (!databasePromise) databasePromise = (async () => {
+    await fs.mkdir(DATA_DIR, { recursive: true });
+    const SQL = await initSqlJs({ locateFile: file => path.join(path.dirname(require.resolve("sql.js")), file) });
+    let db;
+    try { db = new SQL.Database(await fs.readFile(DB_FILE)); }
+    catch (error) { if (error.code !== "ENOENT") throw error; db = new SQL.Database(); }
+    db.run("CREATE TABLE IF NOT EXISTS app_state (id INTEGER PRIMARY KEY CHECK (id = 1), state_json TEXT NOT NULL, updated_at TEXT NOT NULL)");
+    return db;
+  })();
+  return databasePromise;
+}
+
+async function persistDatabase(db) {
+  const tmp = DB_FILE + ".tmp";
+  await fs.writeFile(tmp, Buffer.from(db.export()));
+  await fs.rename(tmp, DB_FILE);
+}
 const WBNB = "0xbb4cdb9cbd36b01bd1cbaebf2de08d9173bc095c";
 const CHAIN_IDS = ["bsc", "ethereum", "solana"];
 const SUPPORTED_CHAINS = new Set(CHAIN_IDS);
@@ -25,18 +47,33 @@ const defaultState = () => ({
 
 async function loadState() {
   await fs.mkdir(DATA_DIR, { recursive: true });
-  try {
-    const parsed = JSON.parse(await fs.readFile(STATE_FILE, "utf8"));
+  const db = await openDatabase();
+  const stored = db.exec("SELECT state_json FROM app_state WHERE id = 1");
+  if (stored.length && stored[0].values.length) {
+    const parsed = JSON.parse(stored[0].values[0][0]);
     return { ...defaultState(), ...parsed, settings: { ...defaultSettings(), ...(parsed.settings || {}) } };
-  } catch (e) {
-    if (e.code !== "ENOENT") throw e;
-    const fresh = defaultState();
-    await saveState(fresh);
-    return fresh;
   }
+
+  // Migração automática e sem apagar nada: importa o estado JSON existente na primeira inicialização do SQLite.
+  let legacyState;
+  try {
+    legacyState = JSON.parse(await fs.readFile(STATE_FILE, "utf8"));
+  } catch (error) {
+    if (error.code !== "ENOENT") throw error;
+  }
+  const initial = legacyState
+    ? { ...defaultState(), ...legacyState, settings: { ...defaultSettings(), ...(legacyState.settings || {}) } }
+    : defaultState();
+  await saveState(initial);
+  return initial;
 }
 async function saveState(state) {
   await fs.mkdir(DATA_DIR, { recursive: true });
+  const db = await openDatabase();
+  const json = JSON.stringify(state);
+  db.run("INSERT INTO app_state (id, state_json, updated_at) VALUES (1, ?, ?) ON CONFLICT(id) DO UPDATE SET state_json = excluded.state_json, updated_at = excluded.updated_at", [json, new Date().toISOString()]);
+  await persistDatabase(db);
+  // Espelho legível e cópia de compatibilidade; o SQLite passa a ser a fonte persistente principal.
   const tmp = STATE_FILE + ".tmp";
   await fs.writeFile(tmp, JSON.stringify(state, null, 2));
   await fs.rename(tmp, STATE_FILE);
