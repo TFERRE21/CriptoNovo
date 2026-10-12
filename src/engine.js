@@ -760,22 +760,12 @@ class PaperEngine {
               // Trailing de lucro em degraus de 10 pontos percentuais:
               // ao atingir +10%, protege +10%; ao atingir +20%, protege +20%, etc.
               const currentNetPct = Number(position.estimatedNetPct);
-              // Proteção emergencial de risco: sair da simulação se a perda líquida estimada chegar a -10%.
-              // O valor é fixado na posição para que não dependa de configuração antiga.
-              const maxLossNetPct = Number(process.env.PAPER_MAX_LOSS_NET_PCT || 10);
-              position.maxLossNetPct = maxLossNetPct;
-              if (currentNetPct <= -maxLossNetPct) {
-                this.closePosition(position, price, "PROTECAO_PERDA_" + maxLossNetPct + "PCT");
-                this.addLog(`PROTEÇÃO DE PERDA SIMULADA: ${position.tokenSymbol}; resultado líquido estimado ${currentNetPct.toFixed(2)}%, limite -${maxLossNetPct}%. Posição encerrada para evitar agravamento da perda.`, "warning", {
-                  tokenSymbol: position.tokenSymbol, chainId, exitNetProfitPct: currentNetPct, maxLossNetPct
-                });
-                continue;
-              }
+              // Sem stop-loss convencional: ativa a proteção de lucro somente após pico líquido de +10%.
+              // A partir daí, tenta sair se o lucro líquido estimado recuar abaixo de +2%.
               const previousPeak = Number(position.maxNetProfitPct ?? -Infinity);
               position.maxNetProfitPct = Math.max(previousPeak, currentNetPct);
-              const profitStep = Math.floor(position.maxNetProfitPct / 10) * 10;
-              if (profitStep >= 10) {
-                position.protectedProfitPct = profitStep;
+              if (position.maxNetProfitPct >= 10) {
+                position.protectedProfitPct = 2;
                 position.trailingSellArmed = true;
               } else {
                 position.protectedProfitPct = 0;
@@ -801,8 +791,8 @@ class PaperEngine {
               }
               // Não vender automaticamente num alvo fixo: deixar o lucro correr.
               // Quando o preço recua abaixo do último degrau protegido, executar venda simulada.
-              if (position.trailingSellArmed && currentNetPct < Number(position.protectedProfitPct || 0)) {
-                const protectedPct = Number(position.protectedProfitPct || 0);
+              if (position.trailingSellArmed && currentNetPct <= Number(position.protectedProfitPct || 0)) {
+                const protectedPct = Number(position.protectedProfitPct || 2);
                 this.closePosition(position, price, "TRAILING_LUCRO_" + protectedPct + "PCT");
                 this.addLog(`VENDA TRAILING SIMULADA: ${position.tokenSymbol}; pico líquido ${Number(position.maxNetProfitPct || 0).toFixed(2)}%; degrau protegido +${protectedPct}%; saída no recuo para ${currentNetPct.toFixed(2)}%.`, "profit", {
                   tokenSymbol: position.tokenSymbol, chainId, protectedProfitPct: protectedPct,
