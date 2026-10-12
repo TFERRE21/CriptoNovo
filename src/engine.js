@@ -332,6 +332,26 @@ class PaperEngine {
       // Search endpoint is approximate. Query several terms each cycle instead of repeatedly seeing only the same WBNB results.
       // Não pesquisar tickers/moedas populares por palavras-chave; descobrir somente projetos novos via feeds recentes e pools recém-criados.
       const results = [];
+      // Fallback de descoberta: a busca direta do DexScreener complementa os feeds recentes
+      // quando perfis/boosts/anúncios retornam poucos tokens. Os filtros de rede e estratégia
+      // continuam sendo aplicados abaixo; esta busca nunca abre posição por si só.
+      const searchTerms = ["new token", "meme", "launch", "pump"];
+      const searchResults = await Promise.all(searchTerms.map(async term => {
+        try {
+          const response = await fetch(`https://api.dexscreener.com/latest/dex/search?q=${encodeURIComponent(term)}`, {
+            headers: { accept: "application/json" }, signal: AbortSignal.timeout(10000)
+          });
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const data = await response.json();
+          const pairs = Array.isArray(data.pairs) ? data.pairs : [];
+          this.addLog(`Busca DexScreener "${term}": ${pairs.length} pares recebidos.`, "scan");
+          return pairs;
+        } catch (error) {
+          this.addLog(`Busca DexScreener "${term}" indisponível: ${error.message || "erro"}.`, "warning");
+          return [];
+        }
+      }));
+      results.push(...searchResults);
       // Fonte adicional de descoberta on-chain: GeckoTerminal, independente dos feeds DexScreener.
       const fetchGeckoPools = async network => {
         try {
