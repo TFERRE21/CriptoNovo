@@ -797,40 +797,6 @@ class PaperEngine {
     this.addLog("COMPRA MANUAL SIMULADA AUTORIZADA PELA ESTRATÉGIA: " + candidate.tokenSymbol + ".", "manual-entry", {tokenSymbol:candidate.tokenSymbol,chainId,pairAddress:candidate.pairAddress});
     return {ok:true,position};
   }
-  manualSimulateEntry(candidateId, amountUsd = 10) {
-    const candidate = this.state.candidates.find(c => String(c.id) === String(candidateId));
-    if (!candidate) throw new Error("Projeto não encontrado no monitor.");
-    const spikePct = Number(candidate.priceChange1h || 0);
-    const isPebblePattern = /pebble/i.test(String(candidate.tokenSymbol || "") + " " + String(candidate.tokenName || ""));
-    if (spikePct < 100 && !isPebblePattern) throw new Error("Este teste manual é exclusivo para PEBBLE ou para o padrão de impulso explosivo (variação de 1h >= 100%).");
-    const price = Number(candidate.priceUsd || 0);
-    if (!(price > 0)) throw new Error("Preço atual indisponível.");
-    const chainId = String(candidate.chainId || "bsc").toLowerCase();
-    const amount = Number(amountUsd);
-    if (!Number.isFinite(amount) || amount < 1 || amount > 100) throw new Error("Valor de teste deve ficar entre US$ 1 e US$ 100.");
-    const open = this.state.positions.filter(p => p.status === "OPEN");
-    if (open.some(p => String(p.pairAddress || "").toLowerCase() === String(candidate.pairAddress || "").toLowerCase() && String(p.chainId || "bsc").toLowerCase() === chainId)) throw new Error("Já existe uma posição aberta deste projeto.");
-    this.state.networkBalances = this.state.networkBalances || chainBalances(Number(process.env.PAPER_BALANCE_USD || 100));
-    const balance = Number(this.state.networkBalances[chainId] ?? 100);
-    if (balance < amount) throw new Error("Saldo virtual insuficiente nesta rede.");
-    const id = String(candidate.id) + "-manual-" + Date.now();
-    const position = {
-      id, chainId, pairAddress: candidate.pairAddress, tokenAddress: candidate.tokenAddress,
-      tokenName: candidate.tokenName, tokenSymbol: candidate.tokenSymbol, url: candidate.url,
-      notionalUsd: amount, entryPriceUsd: price, lastPriceUsd: price,
-      estimatedNetPct: -numEnv("ESTIMATED_ROUNDTRIP_COST_PCT", 1.5),
-      status: "OPEN", openedAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
-      takeProfitPriceUsd: 0, stopLossEnabledAtEntry: false, takeProfitNetPctAtEntry: 0,
-      strategyApprovedAtEntry: false, manualExperiment: true, strategySegment: "PEBBLE_EXPLOSIVE_MOMENTUM",
-      officialWebsite: String(candidate.officialWebsite || ""),
-      entryFeatures: { liquidityUsd:Number(candidate.liquidityUsd||0), volume24hUsd:Number(candidate.volume24hUsd||0), priceChange1h:spikePct, manualExperiment:true }
-    };
-    this.state.networkBalances[chainId] = balance - amount;
-    this.state.paperBalanceUsd = Object.values(this.state.networkBalances).reduce((sum, value) => sum + Number(value || 0), 0);
-    this.state.positions.unshift(position);
-    this.addLog("TESTE MANUAL DE SIMULAÇÃO (não é entrada automática): " + position.tokenSymbol + ", US$ " + amount.toFixed(2) + ", impulso 1h " + spikePct.toFixed(2) + "%.", "manual-experiment", {tokenSymbol:position.tokenSymbol, chainId, notionalUsd:amount, priceChange1h:spikePct});
-    return { ok: true, position };
-  }
   manualSell(positionId) {
     const position = this.state.positions.find(p => String(p.id) === String(positionId) && p.status === "OPEN");
     if (!position) throw new Error("A posição não está aberta ou não foi encontrada.");
