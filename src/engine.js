@@ -776,19 +776,13 @@ class PaperEngine {
               const grossChangePct = (price / position.entryPriceUsd - 1) * 100;
               const costPct = numEnv("ESTIMATED_ROUNDTRIP_COST_PCT", 1.5);
               position.estimatedNetPct = grossChangePct - costPct;
-              // Trailing de lucro em degraus de 10 pontos percentuais:
-              // ao atingir +10%, protege +10%; ao atingir +20%, protege +20%, etc.
+              // Trailing em degraus de 2 pontos percentuais, sem stop-loss.
+              // Pico +3% protege +2%; pico +5% protege +4%; pico +7% protege +6%.
               const currentNetPct = Number(position.estimatedNetPct);
-              // Trailing por degraus de 10 pontos percentuais, sem stop-loss de prejuízo.
-              // Ao tocar +10%, protege +10%; ao tocar +20%, mantém +10%;
-              // ao tocar +30%, protege +20%, e assim sucessivamente.
               const previousPeak = Number(position.maxNetProfitPct ?? -Infinity);
               position.maxNetProfitPct = Math.max(previousPeak, currentNetPct);
-              if (position.maxNetProfitPct >= 10) {
-                position.protectedProfitPct = Math.max(
-                  10,
-                  Math.floor((position.maxNetProfitPct - 0.000001) / 10) * 10
-                );
+              if (position.maxNetProfitPct >= 3) {
+                position.protectedProfitPct = Math.max(2, Math.floor((position.maxNetProfitPct - 0.000001) / 2) * 2);
                 position.trailingSellArmed = true;
               } else {
                 position.protectedProfitPct = 0;
@@ -944,7 +938,14 @@ class PaperEngine {
   snapshot() {
     const positions = this.state.positions.filter(p => p.status === "OPEN");
     const realizedPnlUsd = this.state.trades.reduce((sum, t) => sum + Number(t.pnlUsd || 0), 0);
-    return { ...this.state, positions, openPositionsCount: positions.length,
+    const networkPerformance = Object.fromEntries(["bsc","ethereum","solana"].map(chainId => {
+      const closed = this.state.trades.filter(t => String(t.chainId || "bsc").toLowerCase() === chainId);
+      const open = positions.filter(p => String(p.chainId || "bsc").toLowerCase() === chainId);
+      const realized = closed.reduce((sum,t) => sum + Number(t.pnlUsd || 0),0);
+      const unrealized = open.reduce((sum,p) => sum + Number(p.notionalUsd || 0) * (Number(p.lastPriceUsd || p.entryPriceUsd || 0) / Math.max(Number(p.entryPriceUsd || 0),1e-18) - 1) - Number(p.notionalUsd || 0) * numEnv("ESTIMATED_ROUNDTRIP_COST_PCT",1.5)/100,0);
+      return [chainId,{closedTrades:closed.length,wins:closed.filter(t=>Number(t.pnlUsd||0)>0).length,losses:closed.filter(t=>Number(t.pnlUsd||0)<=0).length,realizedPnlUsd:Number(realized.toFixed(4)),openPositions:open.length,unrealizedPnlUsd:Number(unrealized.toFixed(4)),totalPnlUsd:Number((realized+unrealized).toFixed(4))}];
+    }));
+    return { ...this.state, positions, networkPerformance, openPositionsCount: positions.length,
       closedTradesCount: this.state.trades.length, experiment: { targetEntries: 60, entriesOpened: 0, completed: false, ...(this.state.experiment || {}) }, realizedPnlUsd: Number(realizedPnlUsd.toFixed(4)),
       settings: { ...defaultSettings(), ...(this.state.settings || {}) },
       settingsUpdatedAt: this.state.settingsUpdatedAt || null,
