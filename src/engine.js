@@ -805,6 +805,20 @@ class PaperEngine {
               }
               position.updatedAt = new Date().toISOString();
               priceUpdated = true;
+              // Proteção de queda para posições simuladas: o trailing de lucro só arma após ganho,
+              // portanto uma queda forte antes do lucro precisa de uma saída independente.
+              // Solana usa limite mais apertado pela volatilidade dos tokens recém-lançados.
+              const emergencyStopPct = chainId === "solana"
+                ? numEnv("SOL_EMERGENCY_STOP_NET_PCT", 12)
+                : numEnv("EMERGENCY_STOP_NET_PCT", 15);
+              if (currentNetPct <= -emergencyStopPct) {
+                this.closePosition(position, price, "STOP_EMERGENCIA_SIMULADO_" + emergencyStopPct + "PCT");
+                this.addLog(`STOP DE EMERGÊNCIA SIMULADO: ${position.tokenSymbol}; resultado líquido estimado ${currentNetPct.toFixed(2)}%, limite -${emergencyStopPct}%. Saída registrada para limitar a exposição; preço real pode variar por slippage/liquidez.`, "warning", {
+                  tokenSymbol: position.tokenSymbol, chainId, emergencyStopPct,
+                  exitNetProfitPct: currentNetPct, entryPriceUsd: position.entryPriceUsd, exitPriceUsd: price
+                });
+                continue;
+              }
               const settings = this.state.settings?.[chainId] || defaultSettings()[chainId];
               const target = Number(settings.takeProfitNetPct ?? 4);
               position.takeProfitPriceUsd = position.entryPriceUsd * (1 + (target + costPct) / 100);
