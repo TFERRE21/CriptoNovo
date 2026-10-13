@@ -39,8 +39,6 @@ const chainBalances = amount => Object.fromEntries(CHAIN_IDS.map(chain => [chain
 const defaultSettings = () => Object.fromEntries(CHAIN_IDS.map(chain => [chain, {
   entryUsd: Number(process.env.PAPER_ORDER_USD || 10),
   takeProfitNetPct: chain === "solana" ? 10 : Number(process.env.TAKE_PROFIT_NET_PCT || 4),
-  stopLossEnabled: false,
-  stopLossNetPct: Number(process.env.STOP_LOSS_NET_PCT || 2.5)
 }]));
 
 const defaultState = () => ({
@@ -318,11 +316,10 @@ class PaperEngine {
     this.state.settings = { ...defaultSettings(), ...(this.state.settings || {}) };
     // Simulação global: US$10 por projeto e stop-loss desativado em todas as redes.
     for (const chain of CHAIN_IDS) {
-      this.state.settings[chain] = { ...defaultSettings()[chain], ...(this.state.settings[chain] || {}), entryUsd: 10, stopLossEnabled: false };
+      this.state.settings[chain] = { ...defaultSettings()[chain], ...(this.state.settings[chain] || {}), entryUsd: 10 };
     }
     this.state.settings.solana.takeProfitNetPct = 10;
     for (const position of this.state.positions.filter(p => p.status === "OPEN")) {
-      position.stopLossEnabledAtEntry = false;
       if (String(position.chainId || "").toLowerCase() === "solana") position.takeProfitNetPctAtEntry = 10;
     }
     // Keep the monitor running across dashboard navigation and refreshes.
@@ -680,8 +677,6 @@ class PaperEngine {
       estimatedNetPct: -numEnv("ESTIMATED_ROUNDTRIP_COST_PCT", 1.5),
       status: "OPEN", openedAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
       takeProfitPriceUsd: candidate.priceUsd * (1 + (Number(networkSettings.takeProfitNetPct ?? 4) + numEnv("ESTIMATED_ROUNDTRIP_COST_PCT", 1.5)) / 100),
-      stopLossEnabledAtEntry: Boolean(networkSettings.stopLossEnabled),
-      stopLossNetPctAtEntry: Number(networkSettings.stopLossNetPct ?? 2.5),
       takeProfitNetPctAtEntry: Number(networkSettings.takeProfitNetPct ?? 4),
       experimentEntryNumber: totalEntries + 1,
       strategyApprovedAtEntry: true,
@@ -907,22 +902,19 @@ class PaperEngine {
       if (!item) continue;
       const entryUsd = Number(item.entryUsd);
       const takeProfitNetPct = Number(item.takeProfitNetPct);
-      const stopLossNetPct = Number(item.stopLossNetPct ?? 2.5);
       if (!Number.isFinite(entryUsd) || entryUsd < 1 || entryUsd > 1000000) throw new Error(`Entrada de ${chain} deve ficar entre US$1 e US$1.000.000.`);
       if (!Number.isFinite(takeProfitNetPct) || takeProfitNetPct < 0.1 || takeProfitNetPct > 500) throw new Error(`Meta de ganho de ${chain} deve ficar entre 0,1% e 500%.`);
-      next[chain] = { entryUsd: 10, takeProfitNetPct, stopLossEnabled: false, stopLossNetPct };
+      next[chain] = { entryUsd: 10, takeProfitNetPct };
     }
     this.state.settings = next;
     this.state.settingsUpdatedAt = new Date().toISOString();
-    // Apply the selected stop-loss toggle immediately to already-open paper positions.
     for (const position of this.state.positions.filter(p => p.status === "OPEN")) {
       const chain = String(position.chainId || "bsc").toLowerCase();
       const setting = next[chain] || defaultSettings()[chain];
       position.stopLossEnabledAtEntry = false;
-      position.stopLossNetPctAtEntry = Number(setting.stopLossNetPct ?? 2.5);
       position.takeProfitNetPctAtEntry = Number(setting.takeProfitNetPct ?? 4);
     }
-    const stopSummary = "Stop-loss desativado permanentemente; saídas por meta de lucro ou tempo máximo.";
+    const stopSummary = "Stop-loss removido; posições não são encerradas por limite de perda.";
     this.addLog(`Configurações salvas no servidor. ${stopSummary}. Aplicadas também às posições virtuais abertas.`, "settings");
     await saveState(this.state);
     return this.state.settings;
