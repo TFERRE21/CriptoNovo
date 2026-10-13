@@ -585,7 +585,9 @@ class PaperEngine {
         // Evaluate entry signals on every poll, not only the first time a pair is discovered.
         // A única chamada que pode abrir posição exige aprovação total e o padrão vencedor.
         if (this.state.running && entryAllowed === true && candidate.approved === true && candidate.winnerPatternCompatible === true && candidate.strategySegment === "MOMENTUM_COM_LIQUIDEZ" && Array.isArray(candidate.reasons) && candidate.reasons.length === 0) {
-          this.openPaperPosition(candidate);
+          this.addLog(`SINAL DE ENTRADA: ${candidate.tokenSymbol} passou nos filtros; tentando abrir posição simulada de US$10.`, "approved", { tokenSymbol: candidate.tokenSymbol, chainId: candidate.chainId, pairAddress: candidate.pairAddress, entryScore: candidate.entryScore });
+          try { this.openPaperPosition(candidate); }
+          catch (error) { this.addLog(`FALHA AO ABRIR ${candidate.tokenSymbol}: ${error.message || error}`, "error", { tokenSymbol: candidate.tokenSymbol, chainId: candidate.chainId, pairAddress: candidate.pairAddress }); }
         }
       }
       this.state.seenPairAddresses = [...seen].slice(-5000);
@@ -681,7 +683,7 @@ class PaperEngine {
       stopLossEnabledAtEntry: Boolean(networkSettings.stopLossEnabled),
       stopLossNetPctAtEntry: Number(networkSettings.stopLossNetPct ?? 2.5),
       takeProfitNetPctAtEntry: Number(networkSettings.takeProfitNetPct ?? 4),
-      experimentEntryNumber: chainEntries + 1,
+      experimentEntryNumber: totalEntries + 1,
       strategyApprovedAtEntry: true,
       officialWebsite: String(candidate.officialWebsite || ""),
       entryFeatures: {
@@ -707,8 +709,7 @@ class PaperEngine {
         volume5mUsd: Number(candidate.volume5mUsd || 0)
       }
     };
-    this.state.networkBalances[chainId] = Number(this.state.networkBalances[chainId] ?? 100) - notional;
-    this.state.paperBalanceUsd = Object.values(this.state.networkBalances).reduce((sum, value) => sum + Number(value || 0), 0);
+    // Saldo ilimitado em modo de teste: não debitar o saldo virtual por entrada.
     this.state.experiment.entriesOpened = totalEntries + 1;
     this.state.experiment.startedAt = this.state.experiment.startedAt || new Date().toISOString();
     this.state.positions.unshift(position);
