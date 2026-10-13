@@ -136,12 +136,13 @@ function evaluatePair(pair, now = Date.now()) {
   const priceChange15m = Number(pair?.priceChange?.m15 || 0);
   const priceChange1h = Number(pair?.priceChange?.h1 || 0);
   const volume5m = Number(pair?.volume?.m5 || 0);
-  const minLiquidity = numEnv("MIN_LIQUIDITY_USD", 2500);
+  const minLiquidity = numEnv("MIN_LIQUIDITY_USD", 15000);
   const minVolume24h = numEnv("MIN_VOLUME_24H_USD", 20000);
   const minTxns1h = numEnv("MIN_TXNS_1H", 10);
   const minBuyRatio = numEnv("MIN_BUY_SELL_RATIO", 1.1);
   const isFreshPair = Number.isFinite(ageHours) && ageHours >= 0 && ageHours <= numEnv("FRESH_PAIR_MAX_AGE_HOURS", 6);
   const reasons = [];
+  if (liquidity < 15000) reasons.push("Liquidez abaixo do mínimo global de US$15.000");
 
   if (!pair?.pairAddress || !pair?.baseToken?.address || !pair?.quoteToken?.address) reasons.push("Dados incompletos");
   if (!SUPPORTED_CHAINS.has(chain)) reasons.push("Rede não habilitada");
@@ -153,8 +154,8 @@ function evaluatePair(pair, now = Date.now()) {
     const minFreshLiquidity = numEnv("MIN_FRESH_LIQUIDITY_USD", 1800);
     const minFreshVolume5m = numEnv("MIN_FRESH_VOLUME_5M_USD", 1000);
     const minFreshTxns5m = numEnv("MIN_FRESH_TXNS_5M", 4);
-    const maxAge = numEnv("MAX_PAIR_AGE_HOURS", 720);
-    const minAge = numEnv("MIN_PAIR_AGE_MINUTES", 0);
+    const maxAge = numEnv("MAX_PAIR_AGE_HOURS", 336);
+    const minAge = numEnv("MIN_PAIR_AGE_MINUTES", 60);
     if (liquidity < (isFreshPair ? minFreshLiquidity : minLiquidity)) reasons.push(`Liquidez abaixo do mínimo (${isFreshPair ? minFreshLiquidity : minLiquidity} USD)`);
     if (isFreshPair) {
       if (volume5m < minFreshVolume5m) reasons.push(`Volume recente abaixo do mínimo (${minFreshVolume5m} USD/5 min)`);
@@ -190,8 +191,8 @@ function evaluatePair(pair, now = Date.now()) {
   } else if (chain === "bsc") {
     // BNB Chain: early launch momentum, but avoid the first chaotic seconds and extreme candles.
     strategy = "BSC_EARLY_MOMENTUM";
-    const minAgeMinutes = numEnv("BSC_MIN_AGE_MINUTES", 3);
-    const maxAgeHours = numEnv("BSC_MAX_AGE_HOURS", 72);
+    const minAgeMinutes = numEnv("BSC_MIN_AGE_MINUTES", 60);
+    const maxAgeHours = numEnv("BSC_MAX_AGE_HOURS", 336);
     const minLiq = numEnv("BSC_MIN_LIQUIDITY_USD", 5000);
     const minVol5m = numEnv("BSC_MIN_VOLUME_5M_USD", 1000);
     const minTx5m = numEnv("BSC_MIN_TXNS_5M", 6);
@@ -214,8 +215,8 @@ function evaluatePair(pair, now = Date.now()) {
   } else if (chain === "solana") {
     // Solana: faster meme-token flow, requiring more liquidity and stronger short-term demand.
     strategy = "SOLANA_FAST_FLOW";
-    const minAgeMinutes = numEnv("SOL_MIN_AGE_MINUTES", 0);
-    const maxAgeHours = numEnv("SOL_MAX_AGE_HOURS", 24);
+    const minAgeMinutes = numEnv("SOL_MIN_AGE_MINUTES", 60);
+    const maxAgeHours = numEnv("SOL_MAX_AGE_HOURS", 336);
     const minLiq = numEnv("SOL_MIN_LIQUIDITY_USD", 10000);
     const minVol5m = numEnv("SOL_MIN_VOLUME_5M_USD", 1000);
     const minTx5m = numEnv("SOL_MIN_TXNS_5M", 6);
@@ -472,7 +473,8 @@ class PaperEngine {
           const siteB = Array.isArray(b.info?.websites) && b.info.websites.some(site => /^https?:\/\//i.test(String(site?.url || ""))) ? 1 : 0;
           return siteB - siteA || Number(b.pairCreatedAt || 0) - Number(a.pairCreatedAt || 0);
         })
-        .slice(0, 50);
+        .filter(pair => Number(pair.liquidity?.usd || 0) >= 15000)
+        .slice(0, 100);
       const seen = new Set(this.state.seenPairAddresses);
       const now = Date.now();
       this.state.pairsAnalyzed = Number(this.state.pairsAnalyzed || 0) + pairs.length;
@@ -499,7 +501,7 @@ class PaperEngine {
         const freshMaxMove5m = chainId === "ethereum" ? numEnv("MAX_FRESH_PRICE_CHANGE_5M_PCT", 8)
           : chainId === "bsc" ? numEnv("BSC_MAX_PRICE_CHANGE_5M_PCT", 8)
           : numEnv("SOL_MAX_PRICE_CHANGE_5M_PCT", 10);
-        const freshProject = result.isFreshPair === true && Number(result.ageMinutes) >= 0 && Number(result.ageMinutes) <= 360;
+        const freshProject = result.isFreshPair === true && Number(result.ageMinutes) >= 0 && Number(result.ageMinutes) <= 336 * 60;
         const winnerPatternCompatible =
           hasOfficialWebsiteForEntry &&
           (freshProject
@@ -521,7 +523,7 @@ class PaperEngine {
           winnerPatternCompatible === true &&
           Number(result.entryScore || 0) >= 3 &&
           Number(result.ageMinutes) >= 0 &&
-          Number(result.ageMinutes) <= 4320 &&
+          Number(result.ageMinutes) <= 336 * 60 &&
           hasOfficialWebsiteForEntry &&
           (freshProject
             ? Number(result.liquidityUsd || 0) >= freshLiquidityFloor &&
@@ -592,7 +594,7 @@ class PaperEngine {
         }
       }
       this.state.seenPairAddresses = [...seen].slice(-5000);
-      this.state.candidates = this.state.candidates.slice(0, 500);
+      this.state.candidates = this.state.candidates.filter(candidate => Number(candidate.liquidityUsd || 0) >= 15000).slice(0, 500);
       // Do not enter old candidates from historical state: only fresh, currently confirmed signals may open a position.
       await this.markToMarket();
       this.state.lastPollAt = new Date().toISOString();
@@ -620,7 +622,7 @@ class PaperEngine {
       Number(candidate?.entryScore || 0) >= 3 &&
       Array.isArray(candidate?.reasons) && candidate.reasons.length === 0 &&
       Number(candidate?.ageMinutes) >= 0 &&
-      Number(candidate?.ageMinutes) <= 4320 &&
+      Number(candidate?.ageMinutes) <= 336 * 60 &&
       /^https?:\/\//i.test(candidateWebsite) &&
       (candidate?.isFreshPair === true
         ? candidateLiquidity >= (String(candidate.chainId).toLowerCase() === "ethereum" ? numEnv("MIN_FRESH_LIQUIDITY_USD", 1800) : String(candidate.chainId).toLowerCase() === "bsc" ? numEnv("BSC_MIN_LIQUIDITY_USD", 5000) : numEnv("SOL_MIN_LIQUIDITY_USD", 10000)) &&
