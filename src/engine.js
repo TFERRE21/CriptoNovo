@@ -154,7 +154,7 @@ function evaluatePair(pair, now = Date.now()) {
     const minFreshLiquidity = numEnv("MIN_FRESH_LIQUIDITY_USD", 15000);
     const minFreshVolume5m = numEnv("MIN_FRESH_VOLUME_5M_USD", 1000);
     const minFreshTxns5m = numEnv("MIN_FRESH_TXNS_5M", 4);
-    const maxAge = numEnv("MAX_PAIR_AGE_HOURS", 336);
+    const maxAge = numEnv("MAX_PAIR_AGE_HOURS", 2160);
     const minAge = numEnv("MIN_PAIR_AGE_MINUTES", 60);
     if (liquidity < (isFreshPair ? minFreshLiquidity : minLiquidity)) reasons.push(`Liquidez abaixo do mínimo (${isFreshPair ? minFreshLiquidity : minLiquidity} USD)`);
     if (isFreshPair) {
@@ -192,7 +192,7 @@ function evaluatePair(pair, now = Date.now()) {
     // BNB Chain: early launch momentum, but avoid the first chaotic seconds and extreme candles.
     strategy = "BSC_EARLY_MOMENTUM";
     const minAgeMinutes = numEnv("BSC_MIN_AGE_MINUTES", 60);
-    const maxAgeHours = numEnv("BSC_MAX_AGE_HOURS", 336);
+    const maxAgeHours = numEnv("BSC_MAX_AGE_HOURS", 2160);
     const minLiq = numEnv("BSC_MIN_LIQUIDITY_USD", 15000);
     const minVol5m = numEnv("BSC_MIN_VOLUME_5M_USD", 1000);
     const minTx5m = numEnv("BSC_MIN_TXNS_5M", 6);
@@ -216,7 +216,7 @@ function evaluatePair(pair, now = Date.now()) {
     // Solana: faster meme-token flow, requiring more liquidity and stronger short-term demand.
     strategy = "SOLANA_FAST_FLOW";
     const minAgeMinutes = numEnv("SOL_MIN_AGE_MINUTES", 60);
-    const maxAgeHours = numEnv("SOL_MAX_AGE_HOURS", 336);
+    const maxAgeHours = numEnv("SOL_MAX_AGE_HOURS", 2160);
     const minLiq = numEnv("SOL_MIN_LIQUIDITY_USD", 15000);
     const minVol5m = numEnv("SOL_MIN_VOLUME_5M_USD", 1000);
     const minTx5m = numEnv("SOL_MIN_TXNS_5M", 6);
@@ -501,7 +501,7 @@ class PaperEngine {
         const freshMaxMove5m = chainId === "ethereum" ? numEnv("MAX_FRESH_PRICE_CHANGE_5M_PCT", 8)
           : chainId === "bsc" ? numEnv("BSC_MAX_PRICE_CHANGE_5M_PCT", 8)
           : numEnv("SOL_MAX_PRICE_CHANGE_5M_PCT", 10);
-        const freshProject = result.isFreshPair === true && Number(result.ageMinutes) >= 0 && Number(result.ageMinutes) <= 336 * 60;
+        const freshProject = result.isFreshPair === true && Number(result.ageMinutes) >= 0 && Number(result.ageMinutes) <= 90 * 24 * 60;
         const winnerPatternCompatible =
           (freshProject
             ? result.liquidityUsd >= freshLiquidityFloor &&
@@ -522,7 +522,7 @@ class PaperEngine {
           winnerPatternCompatible === true &&
           Number(result.entryScore || 0) >= 2 &&
           Number(result.ageMinutes) >= 0 &&
-          Number(result.ageMinutes) <= 336 * 60 &&
+          Number(result.ageMinutes) <= 90 * 24 * 60 &&
           (freshProject
             ? Number(result.liquidityUsd || 0) >= freshLiquidityFloor &&
               Number(result.volume5mUsd || 0) >= freshVolume5mFloor
@@ -617,7 +617,7 @@ class PaperEngine {
       Number(candidate?.entryScore || 0) >= 2 &&
       Array.isArray(candidate?.reasons) && candidate.reasons.length === 0 &&
       Number(candidate?.ageMinutes) >= 0 &&
-      Number(candidate?.ageMinutes) <= 336 * 60 &&
+      Number(candidate?.ageMinutes) <= 90 * 24 * 60 &&
       (candidate?.isFreshPair === true
         ? candidateLiquidity >= (String(candidate.chainId).toLowerCase() === "ethereum" ? numEnv("MIN_FRESH_LIQUIDITY_USD", 15000) : String(candidate.chainId).toLowerCase() === "bsc" ? numEnv("BSC_MIN_LIQUIDITY_USD", 15000) : numEnv("SOL_MIN_LIQUIDITY_USD", 15000)) &&
           Number(candidate.volume5mUsd || 0) >= numEnv("MIN_FRESH_VOLUME_5M_USD", 1000) &&
