@@ -11,6 +11,67 @@ app.use(express.static(path.join(__dirname, "..", "public")));
 
 app.get("/api/health", (_req, res) => res.json({ ok: true, mode: "PAPER", time: new Date().toISOString(), running: Boolean(engine.state?.running), startupError, lastError: engine.state?.lastError || null, lastPollAt: engine.state?.lastPollAt || null, candidates: engine.state?.candidates?.length || 0 }));
 app.get("/api/state", (_req, res) => res.json({ ...engine.snapshot(), startupError }));
+app.get("/api/solana/wallet-status", async (_req, res) => {
+  // Read-only wallet check: public address only; never accepts or stores private keys/seed phrases.
+  const address = String(process.env.SOLANA_WALLET_ADDRESS || "").trim();
+  const rpcUrl = String(process.env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com").trim();
+  const addressLooksValid = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(address);
+  if (!address) {
+    return res.json({
+      ok: true,
+      configured: false,
+      network: "solana-mainnet",
+      message: "Configure SOLANA_WALLET_ADDRESS com o endereço público da Binance Web3 Wallet.",
+      liveTradingEnabled: false
+    });
+  }
+  if (!addressLooksValid) {
+    return res.status(400).json({
+      ok: false,
+      configured: true,
+      network: "solana-mainnet",
+      message: "O endereço público Solana configurado parece inválido.",
+      liveTradingEnabled: false
+    });
+  }
+  try {
+    const rpcResponse = await fetch(rpcUrl, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({
+        jsonrpc: "2.0",
+        id: 1,
+        method: "getBalance",
+        params: [address, { commitment: "confirmed" }]
+      }),
+      signal: AbortSignal.timeout(8000)
+    });
+    if (!rpcResponse.ok) throw new Error("O provedor RPC retornou HTTP " + rpcResponse.status);
+    const payload = await rpcResponse.json();
+    if (payload.error) throw new Error(payload.error.message || "Erro do provedor RPC");
+    const lamports = Number(payload.result?.value);
+    if (!Number.isSafeInteger(lamports) || lamports < 0) throw new Error("Resposta de saldo inválida");
+    return res.json({
+      ok: true,
+      configured: true,
+      network: "solana-mainnet",
+      publicAddress: address,
+      balanceSol: lamports / 1_000_000_000,
+      commitment: "confirmed",
+      readOnly: true,
+      liveTradingEnabled: false
+    });
+  } catch (error) {
+    return res.status(502).json({
+      ok: false,
+      configured: true,
+      network: "solana-mainnet",
+      message: "Não foi possível consultar o saldo Solana.",
+      detail: error.message || "Falha no RPC",
+      liveTradingEnabled: false
+    });
+  }
+});
 app.put("/api/settings", async (req, res) => {
   try { const settings = await engine.updateSettings(req.body); res.json({ ok: true, settings }); }
   catch (error) { res.status(400).json({ ok: false, error: error.message || "Configurações inválidas." }); }
