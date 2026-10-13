@@ -159,6 +159,19 @@ const moneyBRL = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'
 async function loadUsdBrl(){try{const r=await fetch('https://open.er-api.com/v6/latest/USD',{signal:AbortSignal.timeout(5000)});if(r.ok){const d=await r.json();if(d.result==='success'&&Number(d.rates?.BRL)>0)usdBrlRate=Number(d.rates.BRL)}}catch{} }
 const tokenPrice = v => { const n=Number(v||0); return n>0 && n<0.01 ? n.toLocaleString('en-US',{maximumSignificantDigits:6,useGrouping:false}) : money(n); };
 const short = s => s ? String(s).slice(0,6)+'…'+String(s).slice(-4) : '—';
+function candidatePassCount(c){
+ const age=Number(c.ageMinutes),liq=Number(c.liquidityUsd||0),v24=Number(c.volume24hUsd||0),v5=Number(c.volume5mUsd||0);
+ const buys=Number(c.buys5m||0),sells=Number(c.sells5m||0),change=Number(c.priceChange5m||0),fresh=Boolean(c.isFreshPair);
+ return [
+  liq>=15000,
+  Number.isFinite(age)&&age>=60&&age<=129600,
+  fresh?v5>=1000:v24>=25000,
+  buys+sells>=4,
+  buys>sells,
+  change>0,
+  Number(c.entryScore||0)>=2
+ ].filter(Boolean).length;
+}
 function candidateChecklist(c){
  const chain=String(c.chainId||'').toLowerCase();
  const age=Number(c.ageMinutes), liq=Number(c.liquidityUsd||0), v24=Number(c.volume24hUsd||0), v5=Number(c.volume5mUsd||0);
@@ -166,7 +179,7 @@ function candidateChecklist(c){
  const fresh=Boolean(c.isFreshPair);
  const checks=[
   ['Liquidez ≥ US$ 15.000',liq>=15000],
-  ['Idade entre 1h e 14 dias',Number.isFinite(age)&&age>=60&&age<=20160],
+  ['Idade entre 1h e 90 dias',Number.isFinite(age)&&age>=60&&age<=129600],
   [fresh?'Volume 5 min ≥ US$ 1.000':'Volume 24h ≥ US$ 25.000',fresh?v5>=1000:v24>=25000],
   ['Transações 5 min ≥ 4',buys+sells>=4],
   ['Compras > vendas em 5 min',buys>sells],
@@ -235,7 +248,8 @@ document.querySelector('#earlyProjects').addEventListener('click',async event=>{
     document.querySelector('#activityLogs').innerHTML=logs.length?logs.slice(0,100).map(l=>'<div class="logitem"><span class="logtime">'+new Date(l.at).toLocaleTimeString('pt-BR')+'</span><span class="logtype">'+escapeHtml(String(l.type||'info').toUpperCase())+'</span><span>'+escapeHtml(l.message||'')+'</span></div>').join(''):'<div class="empty">Aguardando eventos do monitor...</div>';
     document.querySelector('#networkCards').innerHTML=Object.entries(chainNames).map(([id,name])=>'<div class="card network-card"><strong>'+name+'</strong><div class="metric">'+money(balances[id]??100)+'</div><div class="coin-meta">Projetos encontrados: '+candidates.filter(c=>String(c.chainId||'').toLowerCase()===id).length+'</div></div>').join('');
     document.querySelector('#realizedByNetwork').innerHTML=Object.entries(chainNames).map(([id,name])=>'<div class="coin-row"><strong>'+name+'</strong><span>'+candidates.filter(c=>String(c.chainId||'').toLowerCase()===id).length+' projetos</span></div>').join('');
-    document.querySelector('#earlyProjects').innerHTML=candidates.slice(0,50).map((c,i)=>'<tr><td>#'+(i+1)+'</td><td>'+rowToken(c)+'</td><td>'+(c.ageMinutes??'—')+'</td><td>'+money(c.liquidityUsd)+'</td><td>'+money(c.volume24hUsd)+'</td><td>'+Number(c.priceChange1h||0).toFixed(2)+'%</td><td>—</td><td>—</td><td>'+(c.approved?'COMPATÍVEL':'BLOQUEADO')+'</td><td>'+escapeHtml(c.discoverySource||'Fonte on-chain')+'</td><td>'+Number(c.entryScore||0)+'</td><td>'+(c.officialWebsite?'<a href="'+escapeHtml(c.officialWebsite)+'" target="_blank" rel="noopener noreferrer">Site oficial</a>':'—')+'</td><td>'+candidateChecklist(c)+'</td><td>'+(c.approved?'<button type="button" data-manual-buy="'+escapeHtml(String(c.id))+'">Comprar simulação</button>':'Fora do padrão')+'</td></tr>').join('');
+    const rankedCandidates=[...candidates].sort((a,b)=>Number(Boolean(b.approved))-Number(Boolean(a.approved)) || Number(Boolean(b.winnerPatternCompatible))-Number(Boolean(a.winnerPatternCompatible)) || candidatePassCount(b)-candidatePassCount(a) || Number(b.entryScore||0)-Number(a.entryScore||0) || Number(b.liquidityUsd||0)-Number(a.liquidityUsd||0));
+    document.querySelector('#earlyProjects').innerHTML=rankedCandidates.slice(0,50).map((c,i)=>'<tr><td>#'+(i+1)+'</td><td>'+rowToken(c)+'</td><td>'+(c.ageMinutes??'—')+'</td><td>'+money(c.liquidityUsd)+'</td><td>'+money(c.volume24hUsd)+'</td><td>'+Number(c.priceChange1h||0).toFixed(2)+'%</td><td>—</td><td>—</td><td>'+(c.approved?'COMPATÍVEL':'BLOQUEADO')+'</td><td>'+escapeHtml(c.discoverySource||'Fonte on-chain')+'</td><td>'+Number(c.entryScore||0)+'</td><td>'+(c.officialWebsite?'<a href="'+escapeHtml(c.officialWebsite)+'" target="_blank" rel="noopener noreferrer">Site oficial</a>':'—')+'</td><td>'+candidateChecklist(c)+'</td><td>'+(c.approved?'<button type="button" data-manual-buy="'+escapeHtml(String(c.id))+'">Comprar simulação</button>':'Fora do padrão')+'</td></tr>').join('');
     document.querySelector('#emptyEarlyProjects').style.display=candidates.length?'none':'block';
   } catch(e) {
     document.querySelector('#error').textContent='Falha ao carregar painel: '+(e.message||e);
