@@ -167,7 +167,7 @@ function candidatePassCount(c){
  const fresh=Boolean(c.isFreshPair);
  return [
   liq>=15000,
-  Number.isFinite(age)&&age>=60&&age<=129600,
+  Number.isFinite(age)&&age>=0&&age<=129600,
   v24>=25000,
   v5>0 && (fresh?v5>=1000:true),
   buys+sells>=4,
@@ -184,7 +184,7 @@ function candidateChecklist(c){
  const fresh=Boolean(c.isFreshPair),score=Number(c.entryScore||0);
  const checks=[
   ['Liquidez ≥ US$ 15.000',liq>=15000],
-  ['Idade entre 1h e 90 dias',Number.isFinite(age)&&age>=60&&age<=129600],
+  ['Idade entre 0 e 90 dias',Number.isFinite(age)&&age>=0&&age<=129600],
   ['Volume 24h ≥ US$ 25.000',v24>=25000],
   [fresh?'Volume 5 min ≥ US$ 1.000':'Volume 5 min confirmado',fresh?v5>=1000:v5>0],
   ['Transações 5 min ≥ 4',buys+sells>=4],
