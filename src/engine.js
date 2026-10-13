@@ -794,7 +794,7 @@ class PaperEngine {
               }
               // Não vender automaticamente num alvo fixo: deixar o lucro correr.
               // Quando o preço recua abaixo do último degrau protegido, executar venda simulada.
-              if (position.trailingSellArmed && currentNetPct <= Number(position.protectedProfitPct || 0)) {
+              if (position.trailingSellArmed && currentNetPct <= Number(position.protectedProfitPct || 2) + 0.5 && currentNetPct >= Number(position.protectedProfitPct || 2)) {
                 const protectedPct = Number(position.protectedProfitPct || 2);
                 this.closePosition(position, price, "TRAILING_LUCRO_" + protectedPct + "PCT");
                 this.addLog(`VENDA TRAILING SIMULADA: ${position.tokenSymbol}; pico líquido ${Number(position.maxNetProfitPct || 0).toFixed(2)}%; degrau protegido +${protectedPct}%; saída no recuo para ${currentNetPct.toFixed(2)}%.`, "profit", {
