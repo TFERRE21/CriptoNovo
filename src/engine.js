@@ -629,15 +629,30 @@ class PaperEngine {
       candidateBuys5m > candidateSells5m &&
       candidateM5 > 0;
     if (!strictWinnerGate) {
-      this.addLog(`ENTRADA BLOQUEADA: ${candidate?.tokenSymbol || "projeto"} não passou por TODOS os critérios da estratégia no momento da entrada.`, "blocked", {
+      const failed = [];
+      if (candidate?.approved !== true) failed.push("motor não marcou como aprovado");
+      if (candidate?.winnerPatternCompatible !== true) failed.push("padrão vencedor incompatível");
+      if (candidate?.strategySegment !== "MOMENTUM_COM_LIQUIDEZ") failed.push("segmento de estratégia divergente");
+      if (Number(candidate?.entryScore || 0) < 2) failed.push("score abaixo de 2");
+      if (!Array.isArray(candidate?.reasons) || candidate.reasons.length) failed.push(...(Array.isArray(candidate?.reasons) ? candidate.reasons : ["motivos de bloqueio ausentes"]));
+      if (!(Number(candidate?.ageMinutes) >= 0 && Number(candidate?.ageMinutes) <= 90 * 24 * 60)) failed.push("idade fora de 1 hora a 90 dias");
+      if (candidateLiquidity < 15000) failed.push("liquidez abaixo de US$15.000");
+      if (candidateVolume24h < 25000) failed.push("volume 24h abaixo de US$25.000");
+      if (candidateBuys5m + candidateSells5m < 4) failed.push("menos de 4 transações em 5 min");
+      if (candidateBuys5m <= candidateSells5m) failed.push("compras não superam vendas em 5 min");
+      if (!(candidateM5 > 0)) failed.push("variação de 5 min não positiva");
+      if (candidate?.isFreshPair === true && Number(candidate.volume5mUsd || 0) < 1000) failed.push("volume 5 min abaixo de US$1.000");
+      this.addLog(`ENTRADA BLOQUEADA: ${candidate?.tokenSymbol || "projeto"} — ${[...new Set(failed)].join("; ") || "validação final reprovada"}.`, "blocked", {
         tokenSymbol: candidate?.tokenSymbol || "?",
         chainId: candidate?.chainId || "unknown",
         pairAddress: candidate?.pairAddress || "",
         liquidityUsd: candidateLiquidity,
         volume24hUsd: candidateVolume24h,
+        volume5mUsd: Number(candidate?.volume5mUsd || 0),
         buys5m: candidateBuys5m,
         sells5m: candidateSells5m,
-        priceChange5m: candidateM5
+        priceChange5m: candidateM5,
+        failedCriteria: [...new Set(failed)]
       });
       return;
     }
@@ -650,10 +665,10 @@ class PaperEngine {
     this.state.networkBalances = this.state.networkBalances || chainBalances(Number(process.env.PAPER_BALANCE_USD || 100));
     const availableBalance = Math.max(0, Number(this.state.networkBalances[chainId] ?? 100));
     const notional = 10;
-    if (availableBalance < notional || notional < 1) return;
+    if (availableBalance < notional || notional < 1) { this.addLog(`ENTRADA NÃO EXECUTADA: ${candidate.tokenSymbol} — saldo virtual insuficiente em ${chainId} (disponível US${availableBalance.toFixed(2)}; necessário US${notional.toFixed(2)}).`, "blocked", { tokenSymbol: candidate.tokenSymbol, chainId, availableBalance, notional }); return; }
     // Impede duplicar a mesma moeda/rede enquanto sua posição continua aberta.
-    if (open.some(p => String(p.chainId || "bsc").toLowerCase() === chainId && String(p.pairAddress || "").toLowerCase() === String(candidate.pairAddress || "").toLowerCase())) return;
-    if (!(candidate.priceUsd > 0)) return;
+    if (open.some(p => String(p.chainId || "bsc").toLowerCase() === chainId && String(p.pairAddress || "").toLowerCase() === String(candidate.pairAddress || "").toLowerCase())) { this.addLog(`ENTRADA IGNORADA: ${candidate.tokenSymbol} já tem uma posição aberta neste par/rede.`, "blocked", { tokenSymbol: candidate.tokenSymbol, chainId, pairAddress: candidate.pairAddress }); return; }
+    if (!(candidate.priceUsd > 0)) { this.addLog(`ENTRADA NÃO EXECUTADA: ${candidate.tokenSymbol} — preço atual inválido ou ausente.`, "blocked", { tokenSymbol: candidate.tokenSymbol, chainId, priceUsd: candidate.priceUsd }); return; }
     const position = {
       id: candidate.id, chainId: candidate.chainId || "bsc", pairAddress: candidate.pairAddress, tokenAddress: candidate.tokenAddress,
       tokenName: candidate.tokenName, tokenSymbol: candidate.tokenSymbol, url: candidate.url,
