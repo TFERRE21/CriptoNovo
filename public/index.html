@@ -56,6 +56,14 @@ main{max-width:1400px;margin:auto;padding:28px 18px}header{display:flex;align-it
 #earlyProjectTotals>.card .metric{font-size:clamp(18px,1.7vw,26px)!important;line-height:1.25!important;overflow-wrap:anywhere!important}
 #earlyProjectsPanel{display:block!important;width:100%!important}
 #earlyProjectsPanel .tablewrap{max-width:100%;overflow:auto}
+.checklist{min-width:220px;max-width:340px;color:var(--text);font-size:12px}
+.checklist summary{cursor:pointer;color:var(--blue);font-weight:700;white-space:normal}
+.checklist-items{padding:8px 0;display:grid;gap:5px}
+.check-item{display:flex;gap:7px;align-items:flex-start;white-space:normal}
+.check-item.pass b{color:var(--green)}.check-item.fail b{color:var(--red)}
+.check-reasons{border-top:1px solid var(--line);margin-top:6px;padding-top:7px;white-space:normal;color:var(--muted)}
+.check-reasons ul{padding-left:18px;margin:5px 0}.check-reasons li{margin:3px 0}
+
 main>section.grid:not(#earlyProjectTotals){display:grid!important}
 #settingsPanel{display:none!important}
 @media(max-width:1000px){#earlyProjectTotals{grid-template-columns:repeat(3,minmax(0,1fr))!important}}
@@ -126,7 +134,7 @@ body>main>section#tradeStatusPanel{display:block!important}
 <section class="panel" style="margin-bottom:18px" id="earlyProjectsPanel">
 <div class="section-head"><h2>Até 50 projetos novos com site oficial · compra somente com padrão confirmado</h2><span class="pill">Entradas somente compatíveis</span></div>
 <p class="foot">Monitoramento apenas de projetos novos (pares com até 24 horas), site oficial e liquidez disponível, sem repetir o mesmo token. Projetos fora do padrão ficam apenas em observação; só COMPATÍVEIS podem abrir posição. Posições abertas continuam na tabela para venda manual ou saída automática em R$ 100 mil.</p>
-<div class="tablewrap"><table><thead><tr><th>Rank</th><th>Projeto / rede</th><th>Idade</th><th>Liquidez</th><th>Volume 24h</th><th>Variação 1h</th><th>Compra executada</th><th>Resultado da posição</th><th>Estratégia</th><th>Fonte</th><th>Score</th><th>Site oficial</th><th>Ação manual</th></tr></thead><tbody id="earlyProjects"></tbody></table><div class="empty" id="emptyEarlyProjects">Aguardando projetos recentes com dados suficientes.</div></div>
+<div class="tablewrap"><table><thead><tr><th>Rank</th><th>Projeto / rede</th><th>Idade</th><th>Liquidez</th><th>Volume 24h</th><th>Variação 1h</th><th>Compra executada</th><th>Resultado da posição</th><th>Estratégia</th><th>Fonte</th><th>Score</th><th>Site oficial</th><th>Checklist: passou / falhou</th><th>Ação manual</th></tr></thead><tbody id="earlyProjects"></tbody></table><div class="empty" id="emptyEarlyProjects">Aguardando projetos recentes com dados suficientes.</div></div>
 </section>
 
 <section class="panel" style="margin-bottom:18px" id="settingsPanel">
@@ -151,6 +159,25 @@ const moneyBRL = v => new Intl.NumberFormat('pt-BR',{style:'currency',currency:'
 async function loadUsdBrl(){try{const r=await fetch('https://open.er-api.com/v6/latest/USD',{signal:AbortSignal.timeout(5000)});if(r.ok){const d=await r.json();if(d.result==='success'&&Number(d.rates?.BRL)>0)usdBrlRate=Number(d.rates.BRL)}}catch{} }
 const tokenPrice = v => { const n=Number(v||0); return n>0 && n<0.01 ? n.toLocaleString('en-US',{maximumSignificantDigits:6,useGrouping:false}) : money(n); };
 const short = s => s ? String(s).slice(0,6)+'…'+String(s).slice(-4) : '—';
+function candidateChecklist(c){
+ const chain=String(c.chainId||'').toLowerCase();
+ const age=Number(c.ageMinutes), liq=Number(c.liquidityUsd||0), v24=Number(c.volume24hUsd||0), v5=Number(c.volume5mUsd||0);
+ const buys=Number(c.buys5m||0), sells=Number(c.sells5m||0), change=Number(c.priceChange5m||0);
+ const fresh=Boolean(c.isFreshPair);
+ const checks=[
+  ['Liquidez ≥ US$ 15.000',liq>=15000],
+  ['Idade entre 1h e 14 dias',Number.isFinite(age)&&age>=60&&age<=20160],
+  [fresh?'Volume 5 min ≥ US$ 1.000':'Volume 24h ≥ US$ 25.000',fresh?v5>=1000:v24>=25000],
+  ['Transações 5 min ≥ 4',buys+sells>=4],
+  ['Compras > vendas em 5 min',buys>sells],
+  ['Variação 5 min positiva',change>0],
+  ['Score ≥ 2',Number(c.entryScore||0)>=2],
+  ['Site oficial (informativo)',Boolean(c.officialWebsite)]
+ ];
+ const reasons=Array.isArray(c.reasons)?c.reasons:[];
+ return '<details class="checklist"><summary>'+checks.filter(x=>x[1]).length+'/'+checks.length+' critérios informativos aprovados · ver detalhes</summary><div class="checklist-items">'+checks.map(([label,ok])=>'<div class="check-item '+(ok?'pass':'fail')+'"><b>'+(ok?'✓':'✕')+'</b><span>'+escapeHtml(label)+'</span></div>').join('')+(reasons.length?'<div class="check-reasons"><strong>Motivos retornados pelo motor:</strong><ul>'+reasons.map(x=>'<li>'+escapeHtml(x)+'</li>').join('')+'</ul></div>':'<div class="check-reasons">O motor não retornou motivos de bloqueio individuais.</div>')+'</div></details>';
+}
+
 const escapeHtml = s => String(s??'').replace(/[&<>"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
 async function api(path,method='GET',body){const r=await fetch(path,{method,headers:{'Content-Type':'application/json'},...(body===undefined?{}:{body:JSON.stringify(body)})});let data;try{data=await r.json()}catch{data=null}if(!r.ok)throw new Error(data?.error||data?.message||('HTTP '+r.status));return data}
 function rowToken(c){const chain=String(c.chainId||'bsc');const pairUrl=(c.url&&/^https:\/\/dexscreener\.com\//i.test(c.url))?c.url:(c.pairAddress?'https://dexscreener.com/'+encodeURIComponent(chain)+'/'+encodeURIComponent(c.pairAddress):'#');return '<a href="'+pairUrl+'" target="_blank" rel="noopener noreferrer">'+(c.tokenSymbol||'?')+'</a><div class="mono">'+short(c.tokenAddress)+'</div><div class="label">'+(c.tokenName||'')+'</div>'}
@@ -208,7 +235,7 @@ document.querySelector('#earlyProjects').addEventListener('click',async event=>{
     document.querySelector('#activityLogs').innerHTML=logs.length?logs.slice(0,100).map(l=>'<div class="logitem"><span class="logtime">'+new Date(l.at).toLocaleTimeString('pt-BR')+'</span><span class="logtype">'+escapeHtml(String(l.type||'info').toUpperCase())+'</span><span>'+escapeHtml(l.message||'')+'</span></div>').join(''):'<div class="empty">Aguardando eventos do monitor...</div>';
     document.querySelector('#networkCards').innerHTML=Object.entries(chainNames).map(([id,name])=>'<div class="card network-card"><strong>'+name+'</strong><div class="metric">'+money(balances[id]??100)+'</div><div class="coin-meta">Projetos encontrados: '+candidates.filter(c=>String(c.chainId||'').toLowerCase()===id).length+'</div></div>').join('');
     document.querySelector('#realizedByNetwork').innerHTML=Object.entries(chainNames).map(([id,name])=>'<div class="coin-row"><strong>'+name+'</strong><span>'+candidates.filter(c=>String(c.chainId||'').toLowerCase()===id).length+' projetos</span></div>').join('');
-    document.querySelector('#earlyProjects').innerHTML=candidates.slice(0,50).map((c,i)=>'<tr><td>#'+(i+1)+'</td><td>'+rowToken(c)+'</td><td>'+(c.ageMinutes??'—')+'</td><td>'+money(c.liquidityUsd)+'</td><td>'+money(c.volume24hUsd)+'</td><td>'+Number(c.priceChange1h||0).toFixed(2)+'%</td><td>—</td><td>—</td><td>'+(c.approved?'COMPATÍVEL':'BLOQUEADO')+'</td><td>'+escapeHtml(c.discoverySource||'Fonte on-chain')+'</td><td>'+Number(c.entryScore||0)+'</td><td>'+(c.officialWebsite?'<a href="'+escapeHtml(c.officialWebsite)+'" target="_blank" rel="noopener noreferrer">Site oficial</a>':'—')+'</td><td>'+(c.approved?'<button type="button" data-manual-buy="'+escapeHtml(String(c.id))+'">Comprar simulação</button>':'Fora do padrão')+'</td></tr>').join('');
+    document.querySelector('#earlyProjects').innerHTML=candidates.slice(0,50).map((c,i)=>'<tr><td>#'+(i+1)+'</td><td>'+rowToken(c)+'</td><td>'+(c.ageMinutes??'—')+'</td><td>'+money(c.liquidityUsd)+'</td><td>'+money(c.volume24hUsd)+'</td><td>'+Number(c.priceChange1h||0).toFixed(2)+'%</td><td>—</td><td>—</td><td>'+(c.approved?'COMPATÍVEL':'BLOQUEADO')+'</td><td>'+escapeHtml(c.discoverySource||'Fonte on-chain')+'</td><td>'+Number(c.entryScore||0)+'</td><td>'+(c.officialWebsite?'<a href="'+escapeHtml(c.officialWebsite)+'" target="_blank" rel="noopener noreferrer">Site oficial</a>':'—')+'</td><td>'+candidateChecklist(c)+'</td><td>'+(c.approved?'<button type="button" data-manual-buy="'+escapeHtml(String(c.id))+'">Comprar simulação</button>':'Fora do padrão')+'</td></tr>').join('');
     document.querySelector('#emptyEarlyProjects').style.display=candidates.length?'none':'block';
   } catch(e) {
     document.querySelector('#error').textContent='Falha ao carregar painel: '+(e.message||e);
