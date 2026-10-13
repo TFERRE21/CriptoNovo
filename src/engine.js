@@ -153,7 +153,7 @@ function evaluatePair(pair, now = Date.now()) {
     const minFreshVolume5m = numEnv("MIN_FRESH_VOLUME_5M_USD", 1000);
     const minFreshTxns5m = numEnv("MIN_FRESH_TXNS_5M", 4);
     const maxAge = numEnv("MAX_PAIR_AGE_HOURS", 2160);
-    const minAge = numEnv("MIN_PAIR_AGE_MINUTES", 60);
+    const minAge = numEnv("MIN_PAIR_AGE_MINUTES", 0);
     if (liquidity < (isFreshPair ? minFreshLiquidity : minLiquidity)) reasons.push(`Liquidez abaixo do mínimo (${isFreshPair ? minFreshLiquidity : minLiquidity} USD)`);
     if (isFreshPair) {
       if (volume5m < minFreshVolume5m) reasons.push(`Volume recente abaixo do mínimo (${minFreshVolume5m} USD/5 min)`);
@@ -189,7 +189,7 @@ function evaluatePair(pair, now = Date.now()) {
   } else if (chain === "bsc") {
     // BNB Chain: early launch momentum, but avoid the first chaotic seconds and extreme candles.
     strategy = "BSC_EARLY_MOMENTUM";
-    const minAgeMinutes = numEnv("BSC_MIN_AGE_MINUTES", 60);
+    const minAgeMinutes = numEnv("BSC_MIN_AGE_MINUTES", 0);
     const maxAgeHours = numEnv("BSC_MAX_AGE_HOURS", 2160);
     const minLiq = numEnv("BSC_MIN_LIQUIDITY_USD", 15000);
     const minVol5m = numEnv("BSC_MIN_VOLUME_5M_USD", 1000);
@@ -213,7 +213,7 @@ function evaluatePair(pair, now = Date.now()) {
   } else if (chain === "solana") {
     // Solana: faster meme-token flow, requiring more liquidity and stronger short-term demand.
     strategy = "SOLANA_FAST_FLOW";
-    const minAgeMinutes = numEnv("SOL_MIN_AGE_MINUTES", 60);
+    const minAgeMinutes = numEnv("SOL_MIN_AGE_MINUTES", 0);
     const maxAgeHours = numEnv("SOL_MAX_AGE_HOURS", 2160);
     const minLiq = numEnv("SOL_MIN_LIQUIDITY_USD", 15000);
     const minVol5m = numEnv("SOL_MIN_VOLUME_5M_USD", 1000);
@@ -634,7 +634,7 @@ class PaperEngine {
       if (candidate?.strategySegment !== "MOMENTUM_COM_LIQUIDEZ") failed.push("segmento de estratégia divergente");
       if (Number(candidate?.entryScore || 0) < 2) failed.push("score abaixo de 2");
       if (!Array.isArray(candidate?.reasons) || candidate.reasons.length) failed.push(...(Array.isArray(candidate?.reasons) ? candidate.reasons : ["motivos de bloqueio ausentes"]));
-      if (!(Number(candidate?.ageMinutes) >= 0 && Number(candidate?.ageMinutes) <= 90 * 24 * 60)) failed.push("idade fora de 1 hora a 90 dias");
+      if (!(Number(candidate?.ageMinutes) >= 0 && Number(candidate?.ageMinutes) <= 90 * 24 * 60)) failed.push("idade fora de 0 a 90 dias");
       if (candidateLiquidity < 15000) failed.push("liquidez abaixo de US$15.000");
       if (candidateVolume24h < 25000) failed.push("volume 24h abaixo de US$25.000");
       if (candidateBuys5m + candidateSells5m < 4) failed.push("menos de 4 transações em 5 min");
