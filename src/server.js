@@ -11,6 +11,18 @@ app.use(express.static(path.join(__dirname, "..", "public")));
 
 app.get("/api/health", (_req, res) => res.json({ ok: true, mode: "PAPER", time: new Date().toISOString(), running: Boolean(engine.state?.running), startupError, lastError: engine.state?.lastError || null, lastPollAt: engine.state?.lastPollAt || null, candidates: engine.state?.candidates?.length || 0 }));
 app.get("/api/state", (_req, res) => res.json({ ...engine.snapshot(), startupError }));
+app.get("/api/walletconnect/config", (_req, res) => {
+  // WalletConnect Project ID is a public client identifier, not a private key.
+  const projectId = String(process.env.WALLETCONNECT_PROJECT_ID || "").trim();
+  res.set("Cache-Control", "no-store");
+  res.json({
+    ok: true,
+    configured: Boolean(projectId),
+    projectId: projectId || null,
+    network: "solana:mainnet",
+    liveTradingEnabled: false
+  });
+});
 app.get("/api/solana/wallet-status", async (_req, res) => {
   // Read-only wallet check: public address only; never accepts or stores private keys/seed phrases.
   const address = String(process.env.SOLANA_WALLET_ADDRESS || "").trim();
