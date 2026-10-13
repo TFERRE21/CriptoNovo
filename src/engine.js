@@ -161,7 +161,7 @@ function evaluatePair(pair, now = Date.now()) {
       if (buys5m + sells5m < minFreshTxns5m) reasons.push(`Poucas transações em 5 min (${buys5m + sells5m}/${minFreshTxns5m})`);
       if (buys5m <= sells5m) reasons.push("Moeda nova sem pressão compradora confirmada em 5 min");
       if (priceChange5m <= 0) reasons.push("Moeda nova sem momentum positivo em 5 min");
-      if (priceChange5m > numEnv("MAX_FRESH_PRICE_CHANGE_5M_PCT", 12)) reasons.push("Moeda nova já subiu demais em 5 min");
+      if (priceChange5m > numEnv("MAX_FRESH_PRICE_CHANGE_5M_PCT", 8)) reasons.push("Moeda nova já subiu demais em 5 min");
     } else {
       if (volume24h < minVolume24h) reasons.push(`Volume 24h abaixo do mínimo (${minVolume24h} USD)`);
       if (txns1h < minTxns1h) reasons.push(`Poucas transações na última hora (${txns1h}/${minTxns1h})`);
@@ -196,7 +196,7 @@ function evaluatePair(pair, now = Date.now()) {
     const minVol5m = numEnv("BSC_MIN_VOLUME_5M_USD", 1000);
     const minTx5m = numEnv("BSC_MIN_TXNS_5M", 6);
     const minRatio = numEnv("BSC_MIN_BUY_SELL_RATIO_5M", 1.2);
-    const maxChange5m = numEnv("BSC_MAX_PRICE_CHANGE_5M_PCT", 15);
+    const maxChange5m = numEnv("BSC_MAX_PRICE_CHANGE_5M_PCT", 8);
     if (!Number.isFinite(ageHours) || ageHours * 60 < minAgeMinutes || ageHours > maxAgeHours) reasons.push("BNB: par fora da janela inicial de lançamento");
     if (liquidity < minLiq) reasons.push(`BNB: liquidez abaixo de US$${minLiq}`);
     if (volume5m < minVol5m) reasons.push(`BNB: volume de 5 min abaixo de US$${minVol5m}`);
@@ -220,7 +220,7 @@ function evaluatePair(pair, now = Date.now()) {
     const minVol5m = numEnv("SOL_MIN_VOLUME_5M_USD", 1000);
     const minTx5m = numEnv("SOL_MIN_TXNS_5M", 6);
     const minRatio = numEnv("SOL_MIN_BUY_SELL_RATIO_5M", 1.2);
-    const maxChange5m = numEnv("SOL_MAX_PRICE_CHANGE_5M_PCT", 20);
+    const maxChange5m = numEnv("SOL_MAX_PRICE_CHANGE_5M_PCT", 10);
     if (!Number.isFinite(ageHours) || ageHours * 60 < minAgeMinutes || ageHours > maxAgeHours) reasons.push("Solana: par fora da janela inicial de lançamento");
     if (liquidity < minLiq) reasons.push(`Solana: liquidez abaixo de US$${minLiq}`);
     if (volume5m < minVol5m) reasons.push(`Solana: volume de 5 min abaixo de US$${minVol5m}`);
@@ -274,9 +274,9 @@ function evaluatePair(pair, now = Date.now()) {
     : chain === "bsc" ? numEnv("BSC_MIN_LIQUIDITY_USD", 5000)
     : numEnv("SOL_MIN_LIQUIDITY_USD", 10000);
   const freshPatternVolume5m = numEnv("MIN_FRESH_VOLUME_5M_USD", 1000);
-  const freshPatternMaxMove = chain === "ethereum" ? numEnv("MAX_FRESH_PRICE_CHANGE_5M_PCT", 12)
-    : chain === "bsc" ? numEnv("BSC_MAX_PRICE_CHANGE_5M_PCT", 15)
-    : numEnv("SOL_MAX_PRICE_CHANGE_5M_PCT", 20);
+  const freshPatternMaxMove = chain === "ethereum" ? numEnv("MAX_FRESH_PRICE_CHANGE_5M_PCT", 8)
+    : chain === "bsc" ? numEnv("BSC_MAX_PRICE_CHANGE_5M_PCT", 8)
+    : numEnv("SOL_MAX_PRICE_CHANGE_5M_PCT", 10);
   if (isFreshPair) {
     if (liquidity < freshPatternLiquidity) reasons.push(`Padrão lançamento: liquidez abaixo de US${freshPatternLiquidity}`);
     if (volume5m < freshPatternVolume5m) reasons.push(`Padrão lançamento: volume de 5 min abaixo de US${freshPatternVolume5m}`);
@@ -496,9 +496,9 @@ class PaperEngine {
           : chainId === "bsc" ? numEnv("BSC_MIN_LIQUIDITY_USD", 5000)
           : numEnv("SOL_MIN_LIQUIDITY_USD", 10000);
         const freshVolume5mFloor = numEnv("MIN_FRESH_VOLUME_5M_USD", 1000);
-        const freshMaxMove5m = chainId === "ethereum" ? numEnv("MAX_FRESH_PRICE_CHANGE_5M_PCT", 12)
-          : chainId === "bsc" ? numEnv("BSC_MAX_PRICE_CHANGE_5M_PCT", 15)
-          : numEnv("SOL_MAX_PRICE_CHANGE_5M_PCT", 20);
+        const freshMaxMove5m = chainId === "ethereum" ? numEnv("MAX_FRESH_PRICE_CHANGE_5M_PCT", 8)
+          : chainId === "bsc" ? numEnv("BSC_MAX_PRICE_CHANGE_5M_PCT", 8)
+          : numEnv("SOL_MAX_PRICE_CHANGE_5M_PCT", 10);
         const freshProject = result.isFreshPair === true && Number(result.ageMinutes) >= 0 && Number(result.ageMinutes) <= 360;
         const winnerPatternCompatible =
           hasOfficialWebsiteForEntry &&
@@ -625,7 +625,7 @@ class PaperEngine {
       (candidate?.isFreshPair === true
         ? candidateLiquidity >= (String(candidate.chainId).toLowerCase() === "ethereum" ? numEnv("MIN_FRESH_LIQUIDITY_USD", 1800) : String(candidate.chainId).toLowerCase() === "bsc" ? numEnv("BSC_MIN_LIQUIDITY_USD", 5000) : numEnv("SOL_MIN_LIQUIDITY_USD", 10000)) &&
           Number(candidate.volume5mUsd || 0) >= numEnv("MIN_FRESH_VOLUME_5M_USD", 1000) &&
-          candidateM5 <= (String(candidate.chainId).toLowerCase() === "ethereum" ? numEnv("MAX_FRESH_PRICE_CHANGE_5M_PCT", 12) : String(candidate.chainId).toLowerCase() === "bsc" ? numEnv("BSC_MAX_PRICE_CHANGE_5M_PCT", 15) : numEnv("SOL_MAX_PRICE_CHANGE_5M_PCT", 20))
+          candidateM5 <= (String(candidate.chainId).toLowerCase() === "ethereum" ? numEnv("MAX_FRESH_PRICE_CHANGE_5M_PCT", 8) : String(candidate.chainId).toLowerCase() === "bsc" ? numEnv("BSC_MAX_PRICE_CHANGE_5M_PCT", 8) : numEnv("SOL_MAX_PRICE_CHANGE_5M_PCT", 10))
         : candidateLiquidity >= numEnv("WINNER_PATTERN_MIN_LIQUIDITY_USD", 15000) &&
           candidateVolume24h >= numEnv("WINNER_PATTERN_MIN_VOLUME_24H_USD", 50000) &&
           candidateM5 <= numEnv("WINNER_PATTERN_MAX_PRICE_CHANGE_5M_PCT", 20)) &&
@@ -721,9 +721,9 @@ class PaperEngine {
       const freshLiquidityFloor = chainId === "ethereum" ? numEnv("MIN_FRESH_LIQUIDITY_USD", 1800)
         : chainId === "bsc" ? numEnv("BSC_MIN_LIQUIDITY_USD", 5000)
         : numEnv("SOL_MIN_LIQUIDITY_USD", 10000);
-      const freshMaxMove5m = chainId === "ethereum" ? numEnv("MAX_FRESH_PRICE_CHANGE_5M_PCT", 12)
-        : chainId === "bsc" ? numEnv("BSC_MAX_PRICE_CHANGE_5M_PCT", 15)
-        : numEnv("SOL_MAX_PRICE_CHANGE_5M_PCT", 20);
+      const freshMaxMove5m = chainId === "ethereum" ? numEnv("MAX_FRESH_PRICE_CHANGE_5M_PCT", 8)
+        : chainId === "bsc" ? numEnv("BSC_MAX_PRICE_CHANGE_5M_PCT", 8)
+        : numEnv("SOL_MAX_PRICE_CHANGE_5M_PCT", 10);
       const legacyEntryCompatible =
         /^https?:\/\//i.test(String(position.officialWebsite || f.officialWebsite || "")) &&
         (isFreshEntry
