@@ -151,7 +151,7 @@ function evaluatePair(pair, now = Date.now()) {
   let strategy = "ETH_TREND";
   if (chain === "ethereum") {
     // Keep Ethereum's existing strategy unchanged: it was the best performer in the user's sample.
-    const minFreshLiquidity = numEnv("MIN_FRESH_LIQUIDITY_USD", 1800);
+    const minFreshLiquidity = numEnv("MIN_FRESH_LIQUIDITY_USD", 15000);
     const minFreshVolume5m = numEnv("MIN_FRESH_VOLUME_5M_USD", 1000);
     const minFreshTxns5m = numEnv("MIN_FRESH_TXNS_5M", 4);
     const maxAge = numEnv("MAX_PAIR_AGE_HOURS", 336);
@@ -193,7 +193,7 @@ function evaluatePair(pair, now = Date.now()) {
     strategy = "BSC_EARLY_MOMENTUM";
     const minAgeMinutes = numEnv("BSC_MIN_AGE_MINUTES", 60);
     const maxAgeHours = numEnv("BSC_MAX_AGE_HOURS", 336);
-    const minLiq = numEnv("BSC_MIN_LIQUIDITY_USD", 5000);
+    const minLiq = numEnv("BSC_MIN_LIQUIDITY_USD", 15000);
     const minVol5m = numEnv("BSC_MIN_VOLUME_5M_USD", 1000);
     const minTx5m = numEnv("BSC_MIN_TXNS_5M", 6);
     const minRatio = numEnv("BSC_MIN_BUY_SELL_RATIO_5M", 1.2);
@@ -217,7 +217,7 @@ function evaluatePair(pair, now = Date.now()) {
     strategy = "SOLANA_FAST_FLOW";
     const minAgeMinutes = numEnv("SOL_MIN_AGE_MINUTES", 60);
     const maxAgeHours = numEnv("SOL_MAX_AGE_HOURS", 336);
-    const minLiq = numEnv("SOL_MIN_LIQUIDITY_USD", 10000);
+    const minLiq = numEnv("SOL_MIN_LIQUIDITY_USD", 15000);
     const minVol5m = numEnv("SOL_MIN_VOLUME_5M_USD", 1000);
     const minTx5m = numEnv("SOL_MIN_TXNS_5M", 6);
     const minRatio = numEnv("SOL_MIN_BUY_SELL_RATIO_5M", 1.2);
@@ -271,9 +271,9 @@ function evaluatePair(pair, now = Date.now()) {
   const winnerPatternMinVolume24h = numEnv("WINNER_PATTERN_MIN_VOLUME_24H_USD", 50000);
   const winnerPatternMinTxns5m = numEnv("WINNER_PATTERN_MIN_TXNS_5M", 6);
   const winnerPatternMaxChange5m = numEnv("WINNER_PATTERN_MAX_PRICE_CHANGE_5M_PCT", 20);
-  const freshPatternLiquidity = chain === "ethereum" ? numEnv("MIN_FRESH_LIQUIDITY_USD", 1800)
-    : chain === "bsc" ? numEnv("BSC_MIN_LIQUIDITY_USD", 5000)
-    : numEnv("SOL_MIN_LIQUIDITY_USD", 10000);
+  const freshPatternLiquidity = chain === "ethereum" ? numEnv("MIN_FRESH_LIQUIDITY_USD", 15000)
+    : chain === "bsc" ? numEnv("BSC_MIN_LIQUIDITY_USD", 15000)
+    : numEnv("SOL_MIN_LIQUIDITY_USD", 15000);
   const freshPatternVolume5m = numEnv("MIN_FRESH_VOLUME_5M_USD", 1000);
   const freshPatternMaxMove = chain === "ethereum" ? numEnv("MAX_FRESH_PRICE_CHANGE_5M_PCT", 8)
     : chain === "bsc" ? numEnv("BSC_MAX_PRICE_CHANGE_5M_PCT", 8)
@@ -448,7 +448,7 @@ class PaperEngine {
           seeds.set(key, previous);
         }
       }
-      const seedList = [...seeds.values()].slice(0, 50);
+      const seedList = [...seeds.values()].slice(0, 100);
       this.addLog(`Feeds DexScreener: perfis ${profiles.length}, boosts recentes ${boosts.length}, top boosts ${topBoosts.length}, anúncios ${ads.length}; ${seedList.length} tokens únicos.`, "scan");
       const freshPairLists = await Promise.all(seedList.map(async token => {
         try {
@@ -494,16 +494,15 @@ class PaperEngine {
         const officialSitesForEntry = Array.isArray(pair.info?.websites) ? pair.info.websites : [];
         const hasOfficialWebsiteForEntry = officialSitesForEntry.some(site => /^https?:\/\//i.test(String(site?.url || "")));
         // Estratégia anterior restaurada: critérios por estágio, score mínimo 3 e site oficial.
-        const freshLiquidityFloor = chainId === "ethereum" ? numEnv("MIN_FRESH_LIQUIDITY_USD", 1800)
-          : chainId === "bsc" ? numEnv("BSC_MIN_LIQUIDITY_USD", 5000)
-          : numEnv("SOL_MIN_LIQUIDITY_USD", 10000);
+        const freshLiquidityFloor = chainId === "ethereum" ? numEnv("MIN_FRESH_LIQUIDITY_USD", 15000)
+          : chainId === "bsc" ? numEnv("BSC_MIN_LIQUIDITY_USD", 15000)
+          : numEnv("SOL_MIN_LIQUIDITY_USD", 15000);
         const freshVolume5mFloor = numEnv("MIN_FRESH_VOLUME_5M_USD", 1000);
         const freshMaxMove5m = chainId === "ethereum" ? numEnv("MAX_FRESH_PRICE_CHANGE_5M_PCT", 8)
           : chainId === "bsc" ? numEnv("BSC_MAX_PRICE_CHANGE_5M_PCT", 8)
           : numEnv("SOL_MAX_PRICE_CHANGE_5M_PCT", 10);
         const freshProject = result.isFreshPair === true && Number(result.ageMinutes) >= 0 && Number(result.ageMinutes) <= 336 * 60;
         const winnerPatternCompatible =
-          hasOfficialWebsiteForEntry &&
           (freshProject
             ? result.liquidityUsd >= freshLiquidityFloor &&
               Number(result.volume5mUsd || 0) >= freshVolume5mFloor &&
@@ -521,10 +520,9 @@ class PaperEngine {
           result.approved === true &&
           Array.isArray(result.reasons) && result.reasons.length === 0 &&
           winnerPatternCompatible === true &&
-          Number(result.entryScore || 0) >= 3 &&
+          Number(result.entryScore || 0) >= 2 &&
           Number(result.ageMinutes) >= 0 &&
           Number(result.ageMinutes) <= 336 * 60 &&
-          hasOfficialWebsiteForEntry &&
           (freshProject
             ? Number(result.liquidityUsd || 0) >= freshLiquidityFloor &&
               Number(result.volume5mUsd || 0) >= freshVolume5mFloor
@@ -619,13 +617,12 @@ class PaperEngine {
       candidate?.approved === true &&
       candidate?.winnerPatternCompatible === true &&
       candidate?.strategySegment === "MOMENTUM_COM_LIQUIDEZ" &&
-      Number(candidate?.entryScore || 0) >= 3 &&
+      Number(candidate?.entryScore || 0) >= 2 &&
       Array.isArray(candidate?.reasons) && candidate.reasons.length === 0 &&
       Number(candidate?.ageMinutes) >= 0 &&
       Number(candidate?.ageMinutes) <= 336 * 60 &&
-      /^https?:\/\//i.test(candidateWebsite) &&
       (candidate?.isFreshPair === true
-        ? candidateLiquidity >= (String(candidate.chainId).toLowerCase() === "ethereum" ? numEnv("MIN_FRESH_LIQUIDITY_USD", 1800) : String(candidate.chainId).toLowerCase() === "bsc" ? numEnv("BSC_MIN_LIQUIDITY_USD", 5000) : numEnv("SOL_MIN_LIQUIDITY_USD", 10000)) &&
+        ? candidateLiquidity >= (String(candidate.chainId).toLowerCase() === "ethereum" ? numEnv("MIN_FRESH_LIQUIDITY_USD", 15000) : String(candidate.chainId).toLowerCase() === "bsc" ? numEnv("BSC_MIN_LIQUIDITY_USD", 15000) : numEnv("SOL_MIN_LIQUIDITY_USD", 15000)) &&
           Number(candidate.volume5mUsd || 0) >= numEnv("MIN_FRESH_VOLUME_5M_USD", 1000) &&
           candidateM5 <= (String(candidate.chainId).toLowerCase() === "ethereum" ? numEnv("MAX_FRESH_PRICE_CHANGE_5M_PCT", 8) : String(candidate.chainId).toLowerCase() === "bsc" ? numEnv("BSC_MAX_PRICE_CHANGE_5M_PCT", 8) : numEnv("SOL_MAX_PRICE_CHANGE_5M_PCT", 10))
         : candidateLiquidity >= numEnv("WINNER_PATTERN_MIN_LIQUIDITY_USD", 15000) &&
@@ -720,9 +717,9 @@ class PaperEngine {
       // Migração de segurança: posições simuladas antigas sem prova de compatibilidade não podem continuar como entradas válidas.
       const f = position.entryFeatures || {};
       const isFreshEntry = f.isFreshPair === true;
-      const freshLiquidityFloor = chainId === "ethereum" ? numEnv("MIN_FRESH_LIQUIDITY_USD", 1800)
-        : chainId === "bsc" ? numEnv("BSC_MIN_LIQUIDITY_USD", 5000)
-        : numEnv("SOL_MIN_LIQUIDITY_USD", 10000);
+      const freshLiquidityFloor = chainId === "ethereum" ? numEnv("MIN_FRESH_LIQUIDITY_USD", 15000)
+        : chainId === "bsc" ? numEnv("BSC_MIN_LIQUIDITY_USD", 15000)
+        : numEnv("SOL_MIN_LIQUIDITY_USD", 15000);
       const freshMaxMove5m = chainId === "ethereum" ? numEnv("MAX_FRESH_PRICE_CHANGE_5M_PCT", 8)
         : chainId === "bsc" ? numEnv("BSC_MAX_PRICE_CHANGE_5M_PCT", 8)
         : numEnv("SOL_MAX_PRICE_CHANGE_5M_PCT", 10);
