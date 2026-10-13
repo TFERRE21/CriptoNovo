@@ -256,12 +256,15 @@ function evaluatePair(pair, now = Date.now()) {
   // Shared confirmation pattern: recent buy pressure + active volume + controlled momentum.
   // Sludge/QSB historical entry metrics were not present in the screenshot; Solana's added multi-timeframe filter is provisional and must be validated on paper trades.
   const buySellRatio5m = buys5m / Math.max(sells5m, 1);
-  const minCommonBuyRatio = 0.9;
+  const minCommonBuyRatio = numEnv("MIN_COMMON_BUY_SELL_RATIO_5M", 1.2);
   const minCommonTxns5m = 2;
-  if (buys5m + sells5m < minCommonTxns5m) reasons.push(`Confirmação comum: menos de ${minCommonTxns5m} transações em 5 min`);
+  if (buys5m + sells5m < Math.max(minCommonTxns5m, 4)) reasons.push(`Confirmação comum: menos de ${Math.max(minCommonTxns5m, 4)} transações em 5 min`);
   if (buySellRatio5m < minCommonBuyRatio) reasons.push(`Confirmação comum: relação compras/vendas em 5 min abaixo de ${minCommonBuyRatio}x`);
   if (buys5m <= sells5m) reasons.push("Confirmação comum: vendas iguais ou superiores às compras nos últimos 5 min");
   if (priceChange5m <= 0) reasons.push("Confirmação comum: preço sem impulso positivo em 5 min");
+  if (priceChange15m <= 0) reasons.push("Confirmação comum: tendência de 15 min não positiva");
+  if (priceChange1h < 0) reasons.push("Confirmação comum: tendência de 1h negativa");
+  if (volume5m < numEnv("MIN_COMMON_VOLUME_5M_USD", 1000)) reasons.push("Confirmação comum: volume de 5 min abaixo de US$1.000");
   if (volume5m <= 0) reasons.push("Confirmação comum: sem volume recente");
   // Filtro compartilhado por estágio: lançamento recente usa volume/liquidez recentes,
   // enquanto projetos com mais tempo precisam comprovar volume acumulado de 24h.
@@ -289,7 +292,7 @@ function evaluatePair(pair, now = Date.now()) {
     if (buys5m <= sells5m) reasons.push("Padrão estabelecido: compras não superam vendas em 5 min");
     if (priceChange5m <= 0 || priceChange5m > winnerPatternMaxChange5m) reasons.push(`Padrão estabelecido: variação de 5 min fora de 0–${winnerPatternMaxChange5m}%`);
   }
-  if (entryScore < 2) reasons.push(`Qualidade de entrada insuficiente (score ${entryScore}; mínimo 2)`);
+  if (entryScore < numEnv("MIN_ENTRY_SCORE", 4)) reasons.push(`Qualidade de entrada insuficiente (score ${entryScore}; mínimo ${numEnv("MIN_ENTRY_SCORE", 4)})`);
 
   const selected = tokenSide(pair);
   const selectedSymbol = String(selected.token?.symbol || "").trim().toUpperCase();
@@ -517,7 +520,7 @@ class PaperEngine {
           result.approved === true &&
           Array.isArray(result.reasons) && result.reasons.length === 0 &&
           winnerPatternCompatible === true &&
-          Number(result.entryScore || 0) >= 2 &&
+          Number(result.entryScore || 0) >= numEnv("MIN_ENTRY_SCORE", 4) &&
           Number(result.ageMinutes) >= 0 &&
           Number(result.ageMinutes) <= 90 * 24 * 60 &&
           (freshProject
@@ -526,7 +529,10 @@ class PaperEngine {
             : Number(result.liquidityUsd || 0) >= numEnv("WINNER_PATTERN_MIN_LIQUIDITY_USD", 15000) &&
               Number(result.volume24hUsd || 0) >= numEnv("WINNER_PATTERN_MIN_VOLUME_24H_USD", 25000)) &&
           Number(result.buys5m || 0) + Number(result.sells5m || 0) >= 4 &&
-          Number(result.buys5m || 0) > Number(result.sells5m || 0) &&
+          Number(result.buys5m || 0) >= Number(result.sells5m || 0) * numEnv("MIN_COMMON_BUY_SELL_RATIO_5M", 1.2) &&
+          Number(result.volume5mUsd || 0) >= numEnv("MIN_COMMON_VOLUME_5M_USD", 1000) &&
+          Number(result.priceChange15m || 0) > 0 &&
+          Number(result.priceChange1h || 0) >= 0 &&
           Number(result.priceChange5m || 0) > 0 &&
           Number(result.priceChange5m || 0) <= freshMaxMove5m;
         const totalVariationPct = Number(result.priceChange1h || 0);
@@ -613,7 +619,7 @@ class PaperEngine {
       candidate?.approved === true &&
       candidate?.winnerPatternCompatible === true &&
       candidate?.strategySegment === "MOMENTUM_COM_LIQUIDEZ" &&
-      Number(candidate?.entryScore || 0) >= 2 &&
+      Number(candidate?.entryScore || 0) >= numEnv("MIN_ENTRY_SCORE", 4) &&
       Array.isArray(candidate?.reasons) && candidate.reasons.length === 0 &&
       Number(candidate?.ageMinutes) >= 0 &&
       Number(candidate?.ageMinutes) <= 90 * 24 * 60 &&
@@ -625,20 +631,26 @@ class PaperEngine {
           candidateVolume24h >= numEnv("WINNER_PATTERN_MIN_VOLUME_24H_USD", 25000) &&
           candidateM5 <= numEnv("WINNER_PATTERN_MAX_PRICE_CHANGE_5M_PCT", 20)) &&
       candidateBuys5m + candidateSells5m >= numEnv("WINNER_PATTERN_MIN_TXNS_5M", 4) &&
-      candidateBuys5m > candidateSells5m &&
+      candidateBuys5m >= candidateSells5m * numEnv("MIN_COMMON_BUY_SELL_RATIO_5M", 1.2) &&
+      Number(candidate?.volume5mUsd || 0) >= numEnv("MIN_COMMON_VOLUME_5M_USD", 1000) &&
+      Number(candidate?.priceChange15m || 0) > 0 &&
+      Number(candidate?.priceChange1h || 0) >= 0 &&
       candidateM5 > 0;
     if (!strictWinnerGate) {
       const failed = [];
       if (candidate?.approved !== true) failed.push("motor não marcou como aprovado");
       if (candidate?.winnerPatternCompatible !== true) failed.push("padrão vencedor incompatível");
       if (candidate?.strategySegment !== "MOMENTUM_COM_LIQUIDEZ") failed.push("segmento de estratégia divergente");
-      if (Number(candidate?.entryScore || 0) < 2) failed.push("score abaixo de 2");
+      if (Number(candidate?.entryScore || 0) < numEnv("MIN_ENTRY_SCORE", 4)) failed.push(`score abaixo de ${numEnv("MIN_ENTRY_SCORE", 4)}`);
       if (!Array.isArray(candidate?.reasons) || candidate.reasons.length) failed.push(...(Array.isArray(candidate?.reasons) ? candidate.reasons : ["motivos de bloqueio ausentes"]));
       if (!(Number(candidate?.ageMinutes) >= 0 && Number(candidate?.ageMinutes) <= 90 * 24 * 60)) failed.push("idade fora de 0 a 90 dias");
       if (candidateLiquidity < 15000) failed.push("liquidez abaixo de US$15.000");
       if (candidateVolume24h < 25000) failed.push("volume 24h abaixo de US$25.000");
       if (candidateBuys5m + candidateSells5m < 4) failed.push("menos de 4 transações em 5 min");
-      if (candidateBuys5m <= candidateSells5m) failed.push("compras não superam vendas em 5 min");
+      if (candidateBuys5m < candidateSells5m * numEnv("MIN_COMMON_BUY_SELL_RATIO_5M", 1.2)) failed.push("relação compras/vendas abaixo de 1,2x");
+      if (Number(candidate?.volume5mUsd || 0) < numEnv("MIN_COMMON_VOLUME_5M_USD", 1000)) failed.push("volume de 5 min abaixo de US$1.000");
+      if (Number(candidate?.priceChange15m || 0) <= 0) failed.push("tendência de 15 min não positiva");
+      if (Number(candidate?.priceChange1h || 0) < 0) failed.push("tendência de 1h negativa");
       if (!(candidateM5 > 0)) failed.push("variação de 5 min não positiva");
       if (candidate?.isFreshPair === true && Number(candidate.volume5mUsd || 0) < 1000) failed.push("volume 5 min abaixo de US$1.000");
       this.addLog(`ENTRADA BLOQUEADA: ${candidate?.tokenSymbol || "projeto"} — ${[...new Set(failed)].join("; ") || "validação final reprovada"}.`, "blocked", {
