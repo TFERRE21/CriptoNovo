@@ -112,6 +112,21 @@ body>main>section#tradeStatusPanel{display:block!important}
 @media(max-width:520px){#earlyProjectTotals>.network-ranking-card{min-height:190px!important;padding:12px!important}}
 </style></head><body><main>
 <header><div class="brand"><div class="logo">C</div><div><h1>CriptoNovo</h1><p>Monitoramento de projetos novos</p></div></div><div class="actions"><button id="refresh">Atualizar</button><button id="start" class="primary">Iniciar simulação</button><button id="reset" class="danger">Zerar e reiniciar teste</button><button id="stop" class="danger">Parar</button></div></header>
+<section class="panel" id="walletConnectPanel" style="margin:0 0 18px">
+  <div class="section-head">
+    <div>
+      <h2>Binance Web3 Wallet · Solana</h2>
+      <p>Conexão WalletConnect somente para identificar a carteira. Esta etapa não executa swaps nem solicita assinatura de transações.</p>
+    </div>
+    <div class="actions">
+      <button type="button" id="walletConnectConnect" class="primary" disabled>Conectar carteira</button>
+      <button type="button" id="walletConnectDisconnect" hidden>Desconectar</button>
+    </div>
+  </div>
+  <p id="walletConnectStatus" role="status" aria-live="polite" style="margin-top:12px">Verificando configuração do WalletConnect…</p>
+  <p class="mono">Endereço público: <span id="walletConnectAddress">—</span></p>
+  <p class="coin-meta">Modo seguro: swaps reais desativados. Nunca informe sua frase-semente ou chave privada neste painel.</p>
+</section>
 <div class="notice"><strong>Modo simulação:</strong> compras e vendas reais estão DESATIVADAS; o sistema não envia transações nem acessa carteiras. “Aprovado” significa apenas que passou pelos filtros básicos; não garante segurança ou lucro. O ranking de redes é indicativo, não uma promessa de ganho.</div>
 <div id="engineDiagnostic" class="notice" style="display:none;border-color:#7f3044;color:#fecdd3"></div>
 <section class="panel" id="positionsPanel" style="margin-bottom:18px"><div class="section-head"><h2>Moedas compradas — posições abertas</h2><span class="pill" id="openCount">0 abertas</span></div><div id="realizedSummary" class="cards" style="grid-template-columns:repeat(auto-fit,minmax(150px,1fr));margin:12px 0"><div class="card"><div class="label">Ganhos realizados</div><div id="realizedGains" class="metric good">US$ 0,00</div><div id="realizedGainsBRL" class="label">R$ 0,00</div></div><div class="card"><div class="label">Perdas realizadas</div><div id="realizedLosses" class="metric bad">US$ 0,00</div><div id="realizedLossesBRL" class="label">R$ 0,00</div></div><div class="card"><div class="label">Lucro líquido realizado</div><div id="realizedNet" class="metric">US$ 0,00</div><div id="realizedNetBRL" class="label">R$ 0,00</div></div></div><div id="positions" class="position-grid"></div><div class="empty" id="emptyPos">Nenhuma posição virtual aberta.</div><h3>Últimas vendas</h3><div class="tablewrap"><table><thead><tr><th>Moeda</th><th>Rede</th><th>Motivo</th><th>Resultado</th></tr></thead><tbody id="trades"></tbody></table><div class="empty" id="emptyTrades">Sem operações encerradas.</div></div></section>
@@ -304,4 +319,4 @@ document.querySelector('#refresh').onclick=refresh;loadUsdBrl().then(refresh);re
     }
   },true);
 })();
-</script></body></html>
+</script><script src="/wallet-connect.js" defer></script></body></html>
