@@ -268,8 +268,8 @@ function evaluatePair(pair, now = Date.now()) {
   // Filtro compartilhado por estágio: lançamento recente usa volume/liquidez recentes,
   // enquanto projetos com mais tempo precisam comprovar volume acumulado de 24h.
   const winnerPatternMinLiquidity = numEnv("WINNER_PATTERN_MIN_LIQUIDITY_USD", 15000);
-  const winnerPatternMinVolume24h = numEnv("WINNER_PATTERN_MIN_VOLUME_24H_USD", 50000);
-  const winnerPatternMinTxns5m = numEnv("WINNER_PATTERN_MIN_TXNS_5M", 6);
+  const winnerPatternMinVolume24h = numEnv("WINNER_PATTERN_MIN_VOLUME_24H_USD", 25000);
+  const winnerPatternMinTxns5m = numEnv("WINNER_PATTERN_MIN_TXNS_5M", 4);
   const winnerPatternMaxChange5m = numEnv("WINNER_PATTERN_MAX_PRICE_CHANGE_5M_PCT", 20);
   const freshPatternLiquidity = chain === "ethereum" ? numEnv("MIN_FRESH_LIQUIDITY_USD", 15000)
     : chain === "bsc" ? numEnv("BSC_MIN_LIQUIDITY_USD", 15000)
@@ -506,13 +506,13 @@ class PaperEngine {
           (freshProject
             ? result.liquidityUsd >= freshLiquidityFloor &&
               Number(result.volume5mUsd || 0) >= freshVolume5mFloor &&
-              result.buys5m + result.sells5m >= numEnv("WINNER_PATTERN_MIN_TXNS_5M", 6) &&
+              result.buys5m + result.sells5m >= numEnv("WINNER_PATTERN_MIN_TXNS_5M", 4) &&
               result.buys5m > result.sells5m &&
               result.priceChange5m > 0 &&
               result.priceChange5m <= freshMaxMove5m
             : result.liquidityUsd >= numEnv("WINNER_PATTERN_MIN_LIQUIDITY_USD", 15000) &&
-              Number(pair.volume?.h24 || 0) >= numEnv("WINNER_PATTERN_MIN_VOLUME_24H_USD", 50000) &&
-              result.buys5m + result.sells5m >= numEnv("WINNER_PATTERN_MIN_TXNS_5M", 6) &&
+              Number(pair.volume?.h24 || 0) >= numEnv("WINNER_PATTERN_MIN_VOLUME_24H_USD", 25000) &&
+              result.buys5m + result.sells5m >= numEnv("WINNER_PATTERN_MIN_TXNS_5M", 4) &&
               result.buys5m > result.sells5m &&
               result.priceChange5m > 0 &&
               result.priceChange5m <= numEnv("WINNER_PATTERN_MAX_PRICE_CHANGE_5M_PCT", 20));
@@ -527,7 +527,7 @@ class PaperEngine {
             ? Number(result.liquidityUsd || 0) >= freshLiquidityFloor &&
               Number(result.volume5mUsd || 0) >= freshVolume5mFloor
             : Number(result.liquidityUsd || 0) >= numEnv("WINNER_PATTERN_MIN_LIQUIDITY_USD", 15000) &&
-              Number(result.volume24hUsd || 0) >= numEnv("WINNER_PATTERN_MIN_VOLUME_24H_USD", 50000)) &&
+              Number(result.volume24hUsd || 0) >= numEnv("WINNER_PATTERN_MIN_VOLUME_24H_USD", 25000)) &&
           Number(result.buys5m || 0) + Number(result.sells5m || 0) >= 4 &&
           Number(result.buys5m || 0) > Number(result.sells5m || 0) &&
           Number(result.priceChange5m || 0) > 0 &&
@@ -549,8 +549,8 @@ class PaperEngine {
         if (!winnerPatternCompatible && !entryBlockReasons.some(reason => /padrão vencedor/i.test(reason))) {
           entryBlockReasons.push("Critérios combinados de liquidez, volume, compras e momentum não atendidos");
         }
-        if (Number(result.entryScore || 0) < 3 && !entryBlockReasons.some(reason => /score|qualidade de entrada/i.test(reason))) {
-          entryBlockReasons.push(`Score ${result.entryScore}/7; mínimo 3/7`);
+        if (Number(result.entryScore || 0) < 2 && !entryBlockReasons.some(reason => /score|qualidade de entrada/i.test(reason))) {
+          entryBlockReasons.push(`Score ${result.entryScore}/7; mínimo 2/7`);
         }
         const candidate = {
           id: pairKey, chainId, pairAddress: pair.pairAddress,
@@ -626,9 +626,9 @@ class PaperEngine {
           Number(candidate.volume5mUsd || 0) >= numEnv("MIN_FRESH_VOLUME_5M_USD", 1000) &&
           candidateM5 <= (String(candidate.chainId).toLowerCase() === "ethereum" ? numEnv("MAX_FRESH_PRICE_CHANGE_5M_PCT", 8) : String(candidate.chainId).toLowerCase() === "bsc" ? numEnv("BSC_MAX_PRICE_CHANGE_5M_PCT", 8) : numEnv("SOL_MAX_PRICE_CHANGE_5M_PCT", 10))
         : candidateLiquidity >= numEnv("WINNER_PATTERN_MIN_LIQUIDITY_USD", 15000) &&
-          candidateVolume24h >= numEnv("WINNER_PATTERN_MIN_VOLUME_24H_USD", 50000) &&
+          candidateVolume24h >= numEnv("WINNER_PATTERN_MIN_VOLUME_24H_USD", 25000) &&
           candidateM5 <= numEnv("WINNER_PATTERN_MAX_PRICE_CHANGE_5M_PCT", 20)) &&
-      candidateBuys5m + candidateSells5m >= numEnv("WINNER_PATTERN_MIN_TXNS_5M", 6) &&
+      candidateBuys5m + candidateSells5m >= numEnv("WINNER_PATTERN_MIN_TXNS_5M", 4) &&
       candidateBuys5m > candidateSells5m &&
       candidateM5 > 0;
     if (!strictWinnerGate) {
@@ -728,13 +728,13 @@ class PaperEngine {
         (isFreshEntry
           ? Number(f.liquidityUsd || 0) >= freshLiquidityFloor &&
             Number(f.volume5mUsd || 0) >= numEnv("MIN_FRESH_VOLUME_5M_USD", 1000) &&
-            Number(f.buys5m || 0) + Number(f.sells5m || 0) >= numEnv("WINNER_PATTERN_MIN_TXNS_5M", 6) &&
+            Number(f.buys5m || 0) + Number(f.sells5m || 0) >= numEnv("WINNER_PATTERN_MIN_TXNS_5M", 4) &&
             Number(f.buys5m || 0) > Number(f.sells5m || 0) &&
             Number(f.priceChange5m || 0) > 0 &&
             Number(f.priceChange5m || 0) <= freshMaxMove5m
           : Number(f.liquidityUsd || 0) >= numEnv("WINNER_PATTERN_MIN_LIQUIDITY_USD", 15000) &&
-            Number(f.volume24hUsd || 0) >= numEnv("WINNER_PATTERN_MIN_VOLUME_24H_USD", 50000) &&
-            Number(f.buys5m || 0) + Number(f.sells5m || 0) >= numEnv("WINNER_PATTERN_MIN_TXNS_5M", 6) &&
+            Number(f.volume24hUsd || 0) >= numEnv("WINNER_PATTERN_MIN_VOLUME_24H_USD", 25000) &&
+            Number(f.buys5m || 0) + Number(f.sells5m || 0) >= numEnv("WINNER_PATTERN_MIN_TXNS_5M", 4) &&
             Number(f.buys5m || 0) > Number(f.sells5m || 0) &&
             Number(f.priceChange5m || 0) > 0 &&
             Number(f.priceChange5m || 0) <= numEnv("WINNER_PATTERN_MAX_PRICE_CHANGE_5M_PCT", 20));
