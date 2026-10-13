@@ -772,6 +772,17 @@ class PaperEngine {
             const selected = tokenSide(pair);
             const price = selected.priceUsd;
             if (price > 0) {
+              // Proteção de integridade de cotação: não registrar saltos de preço >10x ou <0,1x
+              // entre leituras consecutivas. Isso não fecha a posição nem é stop-loss; apenas
+              // rejeita uma cotação suspeita para evitar P&L fictício por par/token incorreto.
+              const previousPrice = Number(position.lastPriceUsd || position.entryPriceUsd || 0);
+              const priceRatio = previousPrice > 0 ? price / previousPrice : 1;
+              if (previousPrice > 0 && (priceRatio > 10 || priceRatio < 0.1)) {
+                this.addLog(`COTAÇÃO SUSPEITA IGNORADA para ${position.tokenSymbol} na rede ${chainId}: variação de ${((priceRatio - 1) * 100).toFixed(2)}% em uma leitura. Posição mantida aberta; sem venda automática.`, "warning", {
+                  tokenSymbol: position.tokenSymbol, chainId, previousPriceUsd: previousPrice, rejectedPriceUsd: price, priceRatio
+                });
+                continue;
+              }
               position.lastPriceUsd = price;
               const grossChangePct = (price / position.entryPriceUsd - 1) * 100;
               const costPct = numEnv("ESTIMATED_ROUNDTRIP_COST_PCT", 1.5);
@@ -793,19 +804,14 @@ class PaperEngine {
               const settings = this.state.settings?.[chainId] || defaultSettings()[chainId];
               const target = Number(settings.takeProfitNetPct ?? 4);
               position.takeProfitPriceUsd = position.entryPriceUsd * (1 + (target + costPct) / 100);
-              // Alvo extraordinário: encerrar a posição simulada quando seu valor total estimado chegar a R$ 100 mil.
+              // Apenas calcular o valor estimado da posição. Não fechar por alvo monetário absoluto:
+              // um preço incorreto ou salto isolado não deve gerar lucro fictício de milhões.
               const usdBrlRate = Math.max(0.01, numEnv("USD_BRL_RATE", 5.10));
-              const exitTargetBrl = Math.max(1000, numEnv("PAPER_EXIT_TARGET_BRL", 100000));
               const positionValueUsd = Number(position.notionalUsd || 0) * (price / Math.max(Number(position.entryPriceUsd || 0), 1e-18));
               const positionValueBrl = positionValueUsd * usdBrlRate;
               position.currentValueUsd = Number(positionValueUsd.toFixed(6));
               position.currentValueBrl = Number(positionValueBrl.toFixed(2));
-              position.exitTargetBrl = exitTargetBrl;
-              if (positionValueBrl >= exitTargetBrl) {
-                this.closePosition(position, price, "ALVO_VALOR_R$100_MIL");
-                this.addLog(`ALVO DE SAÍDA ATINGIDO: ${position.tokenSymbol}; valor estimado R${positionValueBrl.toFixed(2)}, alvo R${exitTargetBrl.toFixed(2)}, câmbio de referência R${usdBrlRate.toFixed(2)}/US$.`, "profit", {tokenSymbol: position.tokenSymbol, chainId, positionValueBrl, exitTargetBrl, usdBrlRate});
-                continue;
-              }
+              position.exitTargetBrl = null;
               // Não vender automaticamente num alvo fixo: deixar o lucro correr.
               // Quando o preço recua abaixo do último degrau protegido, executar venda simulada.
               if (position.trailingSellArmed && currentNetPct <= Number(position.protectedProfitPct || 10)) {
