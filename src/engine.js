@@ -661,6 +661,7 @@ class PaperEngine {
     // Valor fixo de US$10 por entrada em todas as redes; não alterar posições já abertas.
     const totalEntries = Number(this.state.experiment.entriesOpened || 0);
     const chainId = String(candidate.chainId || "bsc").toLowerCase();
+    const networkSettings = this.state.settings?.[chainId] || defaultSettings()[chainId] || defaultSettings().bsc;
     const open = this.state.positions.filter(p => p.status === "OPEN");
     this.state.networkBalances = this.state.networkBalances || chainBalances(Number(process.env.PAPER_BALANCE_USD || 100));
     // Saldo virtual ilimitado para testes: cada ordem qualificada usa US$10.
