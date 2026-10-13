@@ -669,6 +669,15 @@ class PaperEngine {
     const notional = 10;
     // Impede duplicar a mesma moeda/rede enquanto sua posição continua aberta.
     if (open.some(p => String(p.chainId || "bsc").toLowerCase() === chainId && String(p.pairAddress || "").toLowerCase() === String(candidate.pairAddress || "").toLowerCase())) { this.addLog(`ENTRADA IGNORADA: ${candidate.tokenSymbol} já tem uma posição aberta neste par/rede.`, "blocked", { tokenSymbol: candidate.tokenSymbol, chainId, pairAddress: candidate.pairAddress }); return; }
+    const sameTokenInLoss = open.find(p =>
+      String(p.chainId || "bsc").toLowerCase() === chainId &&
+      String(p.tokenSymbol || "").toUpperCase() === String(candidate.tokenSymbol || "").toUpperCase() &&
+      Number(p.estimatedNetPct ?? p.pnlPct ?? 0) < 0
+    );
+    if (sameTokenInLoss) {
+      this.addLog(`REENTRADA BLOQUEADA: ${candidate.tokenSymbol} já tem posição aberta negativa nesta rede; não aumentar exposição.`, "blocked", { tokenSymbol: candidate.tokenSymbol, chainId, existingPositionId: sameTokenInLoss.id, existingNetPct: sameTokenInLoss.estimatedNetPct ?? sameTokenInLoss.pnlPct });
+      return;
+    }
     if (!(candidate.priceUsd > 0)) { this.addLog(`ENTRADA NÃO EXECUTADA: ${candidate.tokenSymbol} — preço atual inválido ou ausente.`, "blocked", { tokenSymbol: candidate.tokenSymbol, chainId, priceUsd: candidate.priceUsd }); return; }
     const position = {
       id: candidate.id, chainId: candidate.chainId || "bsc", pairAddress: candidate.pairAddress, tokenAddress: candidate.tokenAddress,
@@ -811,11 +820,8 @@ class PaperEngine {
         this.addLog(`Falha ao atualizar preço de ${position.tokenSymbol} na rede ${chainId}: ${error.message || "erro de consulta"}.`, "warning", { tokenSymbol: position.tokenSymbol, chainId });
       }
       if (expired) {
-        const lastPrice = Number(position.lastPriceUsd || position.entryPriceUsd || 0);
-        if (lastPrice > 0) {
-          if (!priceUpdated) this.addLog(`Prazo máximo atingido para ${position.tokenSymbol}; usando o último preço disponível para registrar a saída simulada.`, "warning", { tokenSymbol: position.tokenSymbol, chainId });
-          this.closePosition(position, lastPrice, priceUpdated ? "TEMPO_MAXIMO" : "TEMPO_MAXIMO_PRECO_DESATUALIZADO");
-        }
+        // Sem saída por tempo: manter posição aberta para recuperação; apenas sinalizar preço antigo.
+        this.addLog(`POSIÇÃO MANTIDA: ${position.tokenSymbol} ultrapassou o prazo de monitoramento, mas não será vendida por tempo. Verifique a atualização de preço.`, "warning", { tokenSymbol: position.tokenSymbol, chainId, priceUpdated });
       }
     }
   }
