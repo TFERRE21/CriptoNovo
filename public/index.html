@@ -59,6 +59,7 @@ main{max-width:1400px;margin:auto;padding:28px 18px}header{display:flex;align-it
 .checklist{min-width:220px;max-width:340px;color:var(--text);font-size:12px}
 .checklist summary{cursor:pointer;color:var(--blue);font-weight:700;white-space:normal}
 .checklist-items{padding:8px 0;display:grid;gap:5px}
+.check-metrics{border-top:1px solid var(--line);margin-top:7px;padding-top:7px;display:grid;gap:4px;white-space:normal;color:var(--muted)}.check-metrics strong{color:var(--text)}
 .check-item{display:flex;gap:7px;align-items:flex-start;white-space:normal}
 .check-item.pass b{color:var(--green)}.check-item.fail b{color:var(--red)}
 .check-reasons{border-top:1px solid var(--line);margin-top:6px;padding-top:7px;white-space:normal;color:var(--muted)}
@@ -161,34 +162,42 @@ const tokenPrice = v => { const n=Number(v||0); return n>0 && n<0.01 ? n.toLocal
 const short = s => s ? String(s).slice(0,6)+'…'+String(s).slice(-4) : '—';
 function candidatePassCount(c){
  const age=Number(c.ageMinutes),liq=Number(c.liquidityUsd||0),v24=Number(c.volume24hUsd||0),v5=Number(c.volume5mUsd||0);
- const buys=Number(c.buys5m||0),sells=Number(c.sells5m||0),change=Number(c.priceChange5m||0),fresh=Boolean(c.isFreshPair);
+ const buys=Number(c.buys5m||0),sells=Number(c.sells5m||0);
+ const c5=Number(c.priceChange5m||0),c15=Number(c.priceChange15m||0),c1h=Number(c.priceChange1h||0);
+ const fresh=Boolean(c.isFreshPair);
  return [
   liq>=15000,
   Number.isFinite(age)&&age>=60&&age<=129600,
-  fresh?v5>=1000:v24>=25000,
+  v24>=25000,
+  v5>0 && (fresh?v5>=1000:true),
   buys+sells>=4,
   buys>sells,
-  change>0,
+  c5>0,
+  c15>=0,
+  c1h>=0,
   Number(c.entryScore||0)>=2
  ].filter(Boolean).length;
 }
 function candidateChecklist(c){
- const chain=String(c.chainId||'').toLowerCase();
- const age=Number(c.ageMinutes), liq=Number(c.liquidityUsd||0), v24=Number(c.volume24hUsd||0), v5=Number(c.volume5mUsd||0);
- const buys=Number(c.buys5m||0), sells=Number(c.sells5m||0), change=Number(c.priceChange5m||0);
- const fresh=Boolean(c.isFreshPair);
+ const age=Number(c.ageMinutes),liq=Number(c.liquidityUsd||0),v24=Number(c.volume24hUsd||0),v5=Number(c.volume5mUsd||0);
+ const buys=Number(c.buys5m||0),sells=Number(c.sells5m||0),change5=Number(c.priceChange5m||0),change15=Number(c.priceChange15m||0),change1h=Number(c.priceChange1h||0);
+ const fresh=Boolean(c.isFreshPair),score=Number(c.entryScore||0);
  const checks=[
   ['Liquidez ≥ US$ 15.000',liq>=15000],
   ['Idade entre 1h e 90 dias',Number.isFinite(age)&&age>=60&&age<=129600],
-  [fresh?'Volume 5 min ≥ US$ 1.000':'Volume 24h ≥ US$ 25.000',fresh?v5>=1000:v24>=25000],
+  ['Volume 24h ≥ US$ 25.000',v24>=25000],
+  [fresh?'Volume 5 min ≥ US$ 1.000':'Volume 5 min confirmado',fresh?v5>=1000:v5>0],
   ['Transações 5 min ≥ 4',buys+sells>=4],
   ['Compras > vendas em 5 min',buys>sells],
-  ['Variação 5 min positiva',change>0],
-  ['Score ≥ 2',Number(c.entryScore||0)>=2],
+  ['Variação 5 min positiva',change5>0],
+  ['Tendência 15 min não negativa',change15>=0],
+  ['Tendência 1h não negativa',change1h>=0],
+  ['Score ≥ 2',score>=2],
   ['Site oficial (informativo)',Boolean(c.officialWebsite)]
  ];
  const reasons=Array.isArray(c.reasons)?c.reasons:[];
- return '<details class="checklist"><summary>'+checks.filter(x=>x[1]).length+'/'+checks.length+' critérios informativos aprovados · ver detalhes</summary><div class="checklist-items">'+checks.map(([label,ok])=>'<div class="check-item '+(ok?'pass':'fail')+'"><b>'+(ok?'✓':'✕')+'</b><span>'+escapeHtml(label)+'</span></div>').join('')+(reasons.length?'<div class="check-reasons"><strong>Motivos retornados pelo motor:</strong><ul>'+reasons.map(x=>'<li>'+escapeHtml(x)+'</li>').join('')+'</ul></div>':'<div class="check-reasons">O motor não retornou motivos de bloqueio individuais.</div>')+'</div></details>';
+ const metrics='<div class="check-metrics"><strong>Dados observados</strong><div>Volume 5 min: <b>'+escapeHtml(money(v5))+'</b></div><div>Compras/vendas 5 min: <b>'+buys+' / '+sells+'</b></div><div>Variação 5 min: <b>'+change5.toFixed(2)+'%</b></div><div>Variação 15 min: <b>'+change15.toFixed(2)+'%</b></div><div>Variação 1h: <b>'+change1h.toFixed(2)+'%</b></div><div>Relação compras/vendas: <b>'+Number(c.buySellRatio5m||0).toFixed(2)+'x</b></div></div>';
+ return '<details class="checklist"><summary>'+checks.filter(x=>x[1]).length+'/'+checks.length+' verificações passaram · ver detalhes</summary><div class="checklist-items">'+checks.map(([label,ok])=>'<div class="check-item '+(ok?'pass':'fail')+'"><b>'+(ok?'✓':'✕')+'</b><span>'+escapeHtml(label)+'</span></div>').join('')+metrics+(reasons.length?'<div class="check-reasons"><strong>Motivos reais de bloqueio do motor:</strong><ul>'+reasons.map(x=>'<li>'+escapeHtml(x)+'</li>').join('')+'</ul></div>':'<div class="check-reasons">Nenhum motivo de bloqueio foi retornado pelo motor.</div>')+'</div></details>';
 }
 
 const escapeHtml = s => String(s??'').replace(/[&<>"]/g, ch => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[ch]));
