@@ -37,8 +37,12 @@ const CHAIN_IDS = ["bsc", "ethereum", "solana"];
 const SUPPORTED_CHAINS = new Set(CHAIN_IDS);
 const chainBalances = amount => Object.fromEntries(CHAIN_IDS.map(chain => [chain, Number(amount)]));
 const defaultSettings = () => Object.fromEntries(CHAIN_IDS.map(chain => [chain, {
-  entryUsd: Number(process.env.PAPER_ORDER_USD || 10),
-  takeProfitNetPct: chain === "solana" ? 10 : Number(process.env.TAKE_PROFIT_NET_PCT || 4),
+  // Solana starts with a small fixed PAPER order; real swaps remain disabled.
+  entryUsd: chain === "solana" ? 3 : Number(process.env.PAPER_ORDER_USD || 10),
+  takeProfitNetPct: chain === "solana" ? 1 : Number(process.env.TAKE_PROFIT_NET_PCT || 4),
+  stepUpPct: chain === "solana" ? 2 : null,
+  trailingDrawdownPct: chain === "solana" ? 2 : null,
+  liveTradingEnabled: false
 }]));
 
 const defaultState = () => ({
@@ -926,7 +930,12 @@ class PaperEngine {
       const takeProfitNetPct = Number(item.takeProfitNetPct);
       if (!Number.isFinite(entryUsd) || entryUsd < 1 || entryUsd > 1000000) throw new Error(`Entrada de ${chain} deve ficar entre US$1 e US$1.000.000.`);
       if (!Number.isFinite(takeProfitNetPct) || takeProfitNetPct < 0.1 || takeProfitNetPct > 500) throw new Error(`Meta de ganho de ${chain} deve ficar entre 0,1% e 500%.`);
-      next[chain] = { entryUsd: 10, takeProfitNetPct };
+      next[chain] = {
+        ...next[chain],
+        entryUsd: chain === "solana" ? 3 : entryUsd,
+        takeProfitNetPct,
+        ...(chain === "solana" ? { stepUpPct: 2, trailingDrawdownPct: 2, liveTradingEnabled: false } : {})
+      };
     }
     this.state.settings = next;
     this.state.settingsUpdatedAt = new Date().toISOString();
