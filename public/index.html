@@ -72,9 +72,9 @@ main>section.grid:not(#earlyProjectTotals){display:grid!important}
 @media(max-width:480px){#earlyProjectTotals{grid-template-columns:1fr!important}#positionsPanel #realizedSummary{grid-template-columns:1fr!important}#positionsPanel #positions.position-grid{grid-template-columns:1fr!important}}
 
 /* Escopo do painel: mostrar projetos novos, não listas separadas por rede */
-#realizedByNetwork{display:none!important}
-#networkCards{display:none!important}
-#networkCards{visibility:hidden!important}
+
+
+
 #settingsPanel .settings-grid{grid-template-columns:1fr!important}
 
 /* Visão simplificada solicitada: mostrar somente os cards de resultado e a lista de projetos novos */
@@ -255,8 +255,12 @@ document.querySelector('#earlyProjects').addEventListener('click',async event=>{
     const logs=Array.isArray(s.activityLogs)?s.activityLogs:[];
     document.querySelector('#logCount').textContent=logs.length+' eventos';
     document.querySelector('#activityLogs').innerHTML=logs.length?logs.slice(0,100).map(l=>'<div class="logitem"><span class="logtime">'+new Date(l.at).toLocaleTimeString('pt-BR')+'</span><span class="logtype">'+escapeHtml(String(l.type||'info').toUpperCase())+'</span><span>'+escapeHtml(l.message||'')+'</span></div>').join(''):'<div class="empty">Aguardando eventos do monitor...</div>';
-    document.querySelector('#networkCards').innerHTML=Object.entries(chainNames).map(([id,name])=>'<div class="card network-card"><strong>'+name+'</strong><div class="metric">'+money(balances[id]??100)+'</div><div class="coin-meta">Projetos encontrados: '+candidates.filter(c=>String(c.chainId||'').toLowerCase()===id).length+'</div></div>').join('');
-    document.querySelector('#realizedByNetwork').innerHTML=Object.entries(chainNames).map(([id,name])=>'<div class="coin-row"><strong>'+name+'</strong><span>'+candidates.filter(c=>String(c.chainId||'').toLowerCase()===id).length+' projetos</span></div>').join('');
+    const networkPerformance=s.networkPerformance||{};
+    const networkRows=Object.entries(chainNames).map(([id,name])=>({id,name,...(networkPerformance[id]||{closedTrades:0,wins:0,losses:0,realizedPnlUsd:0,openPositions:0,unrealizedPnlUsd:0,totalPnlUsd:0})}));
+    const bestNetwork=[...networkRows].filter(n=>n.closedTrades>0).sort((a,b)=>b.realizedPnlUsd-a.realizedPnlUsd)[0];
+    const worstNetwork=[...networkRows].filter(n=>n.closedTrades>0).sort((a,b)=>a.realizedPnlUsd-b.realizedPnlUsd)[0];
+    document.querySelector('#networkCards').innerHTML=networkRows.map(n=>'<div class="card network-card"><strong>'+n.name+'</strong><div class="metric '+(n.totalPnlUsd>=0?'good':'bad')+'">'+money(n.totalPnlUsd)+'</div><div class="coin-meta">Realizado: '+money(n.realizedPnlUsd)+' · Aberto: '+money(n.unrealizedPnlUsd)+'</div><div class="coin-meta">Encerradas: '+n.closedTrades+' · Positivas: '+n.wins+' · Negativas: '+n.losses+' · Abertas: '+n.openPositions+'</div></div>').join('');
+    document.querySelector('#realizedByNetwork').innerHTML=networkRows.map(n=>'<div class="coin-row"><strong>'+n.name+'</strong><span>Realizado '+money(n.realizedPnlUsd)+' · '+n.wins+' positivas / '+n.losses+' negativas · '+n.closedTrades+' encerradas</span></div>').join('')+'<div class="coin-meta">'+(bestNetwork?'Maior lucro realizado: '+bestNetwork.name+' ('+money(bestNetwork.realizedPnlUsd)+'). ':'Ainda não há operações encerradas suficientes para apontar a rede mais lucrativa. ')+(worstNetwork?'Maior perda realizada: '+worstNetwork.name+' ('+money(worstNetwork.realizedPnlUsd)+').':'')+'</div>';
     const rankedCandidates=[...candidates].sort((a,b)=>Number(Boolean(b.approved))-Number(Boolean(a.approved)) || Number(Boolean(b.winnerPatternCompatible))-Number(Boolean(a.winnerPatternCompatible)) || candidatePassCount(b)-candidatePassCount(a) || Number(b.entryScore||0)-Number(a.entryScore||0) || Number(b.liquidityUsd||0)-Number(a.liquidityUsd||0));
     document.querySelector('#earlyProjects').innerHTML=rankedCandidates.slice(0,50).map((c,i)=>'<tr><td>#'+(i+1)+'</td><td>'+rowToken(c)+'</td><td>'+(c.ageMinutes??'—')+'</td><td>'+money(c.liquidityUsd)+'</td><td>'+money(c.volume24hUsd)+'</td><td>'+Number(c.priceChange1h||0).toFixed(2)+'%</td><td>—</td><td>—</td><td>'+(c.approved?'COMPATÍVEL':'BLOQUEADO')+'</td><td>'+escapeHtml(c.discoverySource||'Fonte on-chain')+'</td><td>'+Number(c.entryScore||0)+'</td><td>'+(c.officialWebsite?'<a href="'+escapeHtml(c.officialWebsite)+'" target="_blank" rel="noopener noreferrer">Site oficial</a>':'—')+'</td><td>'+candidateChecklist(c)+'</td><td>'+(c.approved?'<button type="button" data-manual-buy="'+escapeHtml(String(c.id))+'">Comprar simulação</button>':'Fora do padrão')+'</td></tr>').join('');
     document.querySelector('#emptyEarlyProjects').style.display=candidates.length?'none':'block';
