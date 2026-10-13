@@ -191,7 +191,7 @@ function evaluatePair(pair, now = Date.now()) {
     // BNB Chain: early launch momentum, but avoid the first chaotic seconds and extreme candles.
     strategy = "BSC_EARLY_MOMENTUM";
     const minAgeMinutes = numEnv("BSC_MIN_AGE_MINUTES", 3);
-    const maxAgeHours = numEnv("BSC_MAX_AGE_HOURS", 12);
+    const maxAgeHours = numEnv("BSC_MAX_AGE_HOURS", 72);
     const minLiq = numEnv("BSC_MIN_LIQUIDITY_USD", 5000);
     const minVol5m = numEnv("BSC_MIN_VOLUME_5M_USD", 1000);
     const minTx5m = numEnv("BSC_MIN_TXNS_5M", 6);
@@ -521,7 +521,7 @@ class PaperEngine {
           winnerPatternCompatible === true &&
           Number(result.entryScore || 0) >= 3 &&
           Number(result.ageMinutes) >= 0 &&
-          Number(result.ageMinutes) <= 1440 &&
+          Number(result.ageMinutes) <= 4320 &&
           hasOfficialWebsiteForEntry &&
           (freshProject
             ? Number(result.liquidityUsd || 0) >= freshLiquidityFloor &&
@@ -620,7 +620,7 @@ class PaperEngine {
       Number(candidate?.entryScore || 0) >= 3 &&
       Array.isArray(candidate?.reasons) && candidate.reasons.length === 0 &&
       Number(candidate?.ageMinutes) >= 0 &&
-      Number(candidate?.ageMinutes) <= 1440 &&
+      Number(candidate?.ageMinutes) <= 4320 &&
       /^https?:\/\//i.test(candidateWebsite) &&
       (candidate?.isFreshPair === true
         ? candidateLiquidity >= (String(candidate.chainId).toLowerCase() === "ethereum" ? numEnv("MIN_FRESH_LIQUIDITY_USD", 1800) : String(candidate.chainId).toLowerCase() === "bsc" ? numEnv("BSC_MIN_LIQUIDITY_USD", 5000) : numEnv("SOL_MIN_LIQUIDITY_USD", 10000)) &&
