@@ -663,9 +663,10 @@ class PaperEngine {
     const chainId = String(candidate.chainId || "bsc").toLowerCase();
     const open = this.state.positions.filter(p => p.status === "OPEN");
     this.state.networkBalances = this.state.networkBalances || chainBalances(Number(process.env.PAPER_BALANCE_USD || 100));
-    const availableBalance = Math.max(0, Number(this.state.networkBalances[chainId] ?? 100));
+    // Saldo virtual ilimitado para testes: cada ordem qualificada usa US$10.
+    // Mantemos o campo de saldo para compatibilidade com a interface, mas ele não bloqueia entradas simuladas.
+    const availableBalance = Number.POSITIVE_INFINITY;
     const notional = 10;
-    if (availableBalance < notional || notional < 1) { this.addLog(`ENTRADA NÃO EXECUTADA: ${candidate.tokenSymbol} — saldo virtual insuficiente em ${chainId} (disponível US${availableBalance.toFixed(2)}; necessário US${notional.toFixed(2)}).`, "blocked", { tokenSymbol: candidate.tokenSymbol, chainId, availableBalance, notional }); return; }
     // Impede duplicar a mesma moeda/rede enquanto sua posição continua aberta.
     if (open.some(p => String(p.chainId || "bsc").toLowerCase() === chainId && String(p.pairAddress || "").toLowerCase() === String(candidate.pairAddress || "").toLowerCase())) { this.addLog(`ENTRADA IGNORADA: ${candidate.tokenSymbol} já tem uma posição aberta neste par/rede.`, "blocked", { tokenSymbol: candidate.tokenSymbol, chainId, pairAddress: candidate.pairAddress }); return; }
     if (!(candidate.priceUsd > 0)) { this.addLog(`ENTRADA NÃO EXECUTADA: ${candidate.tokenSymbol} — preço atual inválido ou ausente.`, "blocked", { tokenSymbol: candidate.tokenSymbol, chainId, priceUsd: candidate.priceUsd }); return; }
