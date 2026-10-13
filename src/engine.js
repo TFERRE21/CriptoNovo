@@ -291,7 +291,7 @@ function evaluatePair(pair, now = Date.now()) {
     if (buys5m <= sells5m) reasons.push("Padrão estabelecido: compras não superam vendas em 5 min");
     if (priceChange5m <= 0 || priceChange5m > winnerPatternMaxChange5m) reasons.push(`Padrão estabelecido: variação de 5 min fora de 0–${winnerPatternMaxChange5m}%`);
   }
-  if (entryScore < 3) reasons.push(`Qualidade de entrada insuficiente (score ${entryScore}; mínimo 3)`);
+  if (entryScore < 2) reasons.push(`Qualidade de entrada insuficiente (score ${entryScore}; mínimo 2)`);
 
   const selected = tokenSide(pair);
   const selectedSymbol = String(selected.token?.symbol || "").trim().toUpperCase();
@@ -302,7 +302,7 @@ function evaluatePair(pair, now = Date.now()) {
   if (String(pair?.dexId || "").length === 0) reasons.push("DEX não identificada");
   const officialSites = Array.isArray(pair?.info?.websites) ? pair.info.websites : [];
   const hasOfficialWebsite = officialSites.some(site => /^https?:\/\//i.test(String(site?.url || "")));
-  if (!hasOfficialWebsite) reasons.push("Sem site oficial verificável — entrada bloqueada");
+  // Site oficial é informativo, não é requisito de entrada.
   return { approved: reasons.length === 0, reasons, entryScore, entryScorePct, strategy, isFreshPair, liquidityUsd: liquidity, volume24hUsd: volume24h, txns1h, buys1h, sells1h,
     buys5m, sells5m, volume5mUsd: volume5m, priceChange5m, priceChange15m, priceChange1h,
     buySellRatio: buys1h / Math.max(sells1h, 1), buySellRatio5m,
@@ -493,7 +493,7 @@ class PaperEngine {
         // Um projeto fora deste padrão nunca pode abrir posição, mesmo que outro filtro aprove o par.
         const officialSitesForEntry = Array.isArray(pair.info?.websites) ? pair.info.websites : [];
         const hasOfficialWebsiteForEntry = officialSitesForEntry.some(site => /^https?:\/\//i.test(String(site?.url || "")));
-        // Estratégia anterior restaurada: critérios por estágio, score mínimo 3 e site oficial.
+        // Critérios por estágio; site oficial é apenas informativo e score mínimo é 2.
         const freshLiquidityFloor = chainId === "ethereum" ? numEnv("MIN_FRESH_LIQUIDITY_USD", 15000)
           : chainId === "bsc" ? numEnv("BSC_MIN_LIQUIDITY_USD", 15000)
           : numEnv("SOL_MIN_LIQUIDITY_USD", 15000);
@@ -543,9 +543,6 @@ class PaperEngine {
               ? "LANCAMENTO_EM_OBSERVACAO"
               : "MOMENTUM_NAO_CONFIRMADO";
         const entryBlockReasons = [...result.reasons];
-        if (!hasOfficialWebsiteForEntry && !entryBlockReasons.some(reason => /site oficial/i.test(reason))) {
-          entryBlockReasons.push("Site oficial não encontrado");
-        }
         if (!winnerPatternCompatible && !entryBlockReasons.some(reason => /padrão vencedor/i.test(reason))) {
           entryBlockReasons.push("Critérios combinados de liquidez, volume, compras e momentum não atendidos");
         }
