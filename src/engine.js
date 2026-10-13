@@ -792,12 +792,13 @@ class PaperEngine {
               const costPct = numEnv("ESTIMATED_ROUNDTRIP_COST_PCT", 1.5);
               position.estimatedNetPct = grossChangePct - costPct;
               // Trailing em degraus de 2 pontos percentuais, sem stop-loss.
-              // Pico +3% protege +2%; pico +5% protege +4%; pico +7% protege +6%.
+              // A proteção fica sempre um degrau abaixo do pico: pico +3% protege +2%;
+              // +5% protege +4%; +30% protege +28%; +32% protege +30%.
               const currentNetPct = Number(position.estimatedNetPct);
               const previousPeak = Number(position.maxNetProfitPct ?? -Infinity);
               position.maxNetProfitPct = Math.max(previousPeak, currentNetPct);
               if (position.maxNetProfitPct >= 3) {
-                position.protectedProfitPct = Math.max(2, Math.floor((position.maxNetProfitPct - 0.000001) / 2) * 2);
+                position.protectedProfitPct = Math.max(2, Math.floor((position.maxNetProfitPct - 0.000001) / 2) * 2 - 2);
                 position.trailingSellArmed = true;
               } else {
                 position.protectedProfitPct = 0;
