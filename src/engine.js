@@ -642,27 +642,16 @@ class PaperEngine {
       return;
     }
     this.state.experiment = { targetEntries: 60, entriesOpened: 0, completed: false, startedAt: null, ...(this.state.experiment || {}) };
-    // Estratégia de fila: manter no máximo uma posição aberta em todo o robô.
-    // Após a venda/fechamento, uma nova entrada pode ocorrer quando um candidato voltar a cumprir os filtros.
-    const maxOpen = 1;
+    // Entradas simultâneas permitidas: cada sinal qualificado pode abrir uma posição independente.
+    // Valor fixo de US$10 por entrada em todas as redes; não alterar posições já abertas.
     const totalEntries = Number(this.state.experiment.entriesOpened || 0);
     const chainId = String(candidate.chainId || "bsc").toLowerCase();
-    const chainEntries = [...this.state.positions, ...this.state.trades].filter(p => String(p.chainId || "bsc").toLowerCase() === chainId && Number(p.experimentEntryNumber) > 0).length;
-    const networkSettings = this.state.settings?.[chainId] || defaultSettings()[chainId];
     const open = this.state.positions.filter(p => p.status === "OPEN");
     this.state.networkBalances = this.state.networkBalances || chainBalances(Number(process.env.PAPER_BALANCE_USD || 100));
     const availableBalance = Math.max(0, Number(this.state.networkBalances[chainId] ?? 100));
-    // Após o primeiro trade fechado com lucro nesta rede, compõe agressivamente no modo paper.
-    const hasProfitableTrade = this.state.trades.some(t =>
-      String(t.chainId || "bsc").toLowerCase() === chainId && Number(t.pnlUsd || 0) > 0
-    );
-    const configuredNotional = Number(networkSettings.entryUsd || 10);
-    // Solana: cada entrada usa 99% do saldo virtual livre da própria rede.
-    // As outras redes mantêm o comportamento configurado/composto já existente.
-    const notional = chainId === "solana"
-      ? Number((availableBalance * 0.99).toFixed(2))
-      : (hasProfitableTrade ? Number((availableBalance * 0.99).toFixed(2)) : configuredNotional);
-    if (open.length >= maxOpen || availableBalance < notional || notional < 1) return;
+    const notional = 10;
+    if (availableBalance < notional || notional < 1) return;
+    // Impede duplicar a mesma moeda/rede enquanto sua posição continua aberta.
     if (open.some(p => String(p.chainId || "bsc").toLowerCase() === chainId && String(p.pairAddress || "").toLowerCase() === String(candidate.pairAddress || "").toLowerCase())) return;
     if (!(candidate.priceUsd > 0)) return;
     const position = {
