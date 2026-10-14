@@ -162,6 +162,7 @@ body>main>section#tradeStatusPanel{display:block!important}
 <div class="settings-network"><h3>Ethereum</h3><label class="field">Valor por entrada (US$)<input type="number" min="1" max="1000000" step="0.5" id="ethereumEntry" required></label><label class="field">Meta de ganho líquido (%)<input type="number" min="0.1" max="500" step="0.1" id="ethereumTarget" required></label></div>
 <div class="settings-network"><h3>Solana</h3><label class="field">Valor por entrada (US$)<input type="number" min="1" max="1000000" step="0.5" id="solanaEntry" required></label><label class="field">Meta de ganho líquido (%)<input type="number" min="0.1" max="500" step="0.1" id="solanaTarget" required></label></div>
 </div><div class="settings-actions"><button type="submit" class="primary" id="saveSettings">Salvar configurações</button><span id="settingsMessage">Carregando configurações...</span></div></form></section>
+<section class="panel" style="margin:14px 0;border:1px solid #b7791f"><div class="section-head"><h2>Operação REAL · Solana</h2><span class="pill" id="liveAutoStatus">DESLIGADO</span></div><p class="foot">Compras reais na mainnet. Limite inicial de 0,001 SOL por entrada; uma posição por vez. O monitor de sinais precisa estar iniciado.</p><div style="display:flex;gap:8px;flex-wrap:wrap;align-items:end"><label class="field" style="flex:1;min-width:240px">Token privado da API<input id="liveApiToken" type="password" autocomplete="off" placeholder="LIVE_TRADING_API_TOKEN (não compartilhe)"></label><button type="button" class="primary" id="liveEnable">Ligar robô REAL</button><button type="button" class="danger" id="liveDisable">Desligar robô REAL</button><button type="button" id="liveStatusRefresh">Atualizar status</button></div><p id="liveAutoMessage" class="foot">Operação real desligada até autorização explícita.</p></section>
 <section class="two">
 <div class="panel"><div class="section-head"><h2>Novos pares detectados</h2><span class="pill" id="mode">PAPER</span></div><div class="tablewrap"><table><thead><tr><th>Token / par</th><th>Preço</th><th>Liquidez</th><th>Idade</th><th>Filtro</th></tr></thead><tbody id="candidates"></tbody></table><div class="empty" id="empty">Inicie o monitor para consultar pares.</div></div></div>
 <div class="right-stack"><div class="panel activity-panel"><div class="section-head"><h2>Log ao vivo do robô</h2><span class="pill" id="logCount">0 eventos</span></div><div id="activityLogs" class="loglist"><div class="empty">Aguardando eventos do monitor...</div></div></div></div></div>
@@ -319,4 +320,26 @@ document.querySelector('#refresh').onclick=refresh;loadUsdBrl().then(refresh);re
     }
   },true);
 })();
-</script><script src="/wallet-connect.js" defer></script></body></html>
+</script><script>
+(function(){
+ const token=()=>document.getElementById('liveApiToken').value.trim();
+ const msg=document.getElementById('liveAutoMessage'),badge=document.getElementById('liveAutoStatus');
+ async function liveRequest(path,method='GET'){
+  const headers={'Content-Type':'application/json'};
+  if(method!=='GET') headers.Authorization='Bearer '+token();
+  const r=await fetch(path,{method,headers,cache:'no-store'});
+  const d=await r.json().catch(()=>({}));
+  if(!r.ok) throw new Error(d.error||('HTTP '+r.status));
+  return d;
+ }
+ async function status(){
+  try{const s=await liveRequest('/api/live/auto/status');badge.textContent=s.enabled?'REAL ATIVO':'DESLIGADO';msg.textContent=(s.enabled?'Robô real ativo. ':'Robô real desligado. ')+(s.openPosition?'Posição: '+s.openPosition.tokenSymbol+' · pico '+Number(s.openPosition.peakPct||0).toFixed(2)+'% · proteção '+Number(s.openPosition.trailFloorPct||0).toFixed(2)+'%. ':'Sem posição aberta. ')+(s.lastError?'Último erro: '+s.lastError:'');}
+  catch(e){msg.textContent='Falha ao consultar status: '+e.message;}
+ }
+ document.getElementById('liveEnable').onclick=async()=>{if(!token()){msg.textContent='Informe o token privado da API.';return;}if(!confirm('Confirma operar na Solana MAINNET com dinheiro real? A ordem inicial é limitada a 0,001 SOL.'))return;try{msg.textContent='Validando carteira e ligando...';await liveRequest('/api/live/auto/enable','POST');await status();}catch(e){msg.textContent='Não foi possível ligar: '+e.message;}};
+ document.getElementById('liveDisable').onclick=async()=>{if(!token()){msg.textContent='Informe o token privado da API.';return;}try{await liveRequest('/api/live/auto/disable','POST');await status();}catch(e){msg.textContent='Não foi possível desligar: '+e.message;}};
+ document.getElementById('liveStatusRefresh').onclick=status;
+ status();setInterval(status,10000);
+})();
+</script>
+<script src="/wallet-connect.js" defer></script></body></html>
