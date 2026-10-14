@@ -84,6 +84,58 @@ app.get("/api/solana/wallet-status", async (_req, res) => {
     });
   }
 });
+
+const SOL_MINT = "So11111111111111111111111111111111111111112";
+const MAX_BUY_LAMPORTS = 10000000; // 0.01 SOL; conservative initial cap
+function jupiterKey() { return String(process.env.JUPITER_API_KEY || "").trim(); }
+app.get("/api/jupiter/status", (_req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.json({ ok: true, configured: Boolean(jupiterKey()), network: "solana-mainnet", maxBuyLamports: MAX_BUY_LAMPORTS, liveTradingEnabled: false, note: "Swaps require wallet signature; automatic trading remains disabled." });
+});
+app.post("/api/jupiter/order", async (req, res) => {
+  try {
+    if (!jupiterKey()) return res.status(503).json({ ok: false, error: "JUPITER_API_KEY não configurada no servidor." });
+    const { inputMint, outputMint, amount, taker } = req.body || {};
+    const rawAmount = String(amount || "");
+    if (!/^[1-9][0-9]{0,18}$/.test(rawAmount)) return res.status(400).json({ ok: false, error: "Quantidade inválida." });
+    if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(String(taker || ""))) return res.status(400).json({ ok: false, error: "Endereço público da carteira inválido." });
+    if (inputMint !== SOL_MINT || outputMint === SOL_MINT || !/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(String(outputMint || ""))) return res.status(400).json({ ok: false, error: "Por segurança, a primeira etapa permite apenas comprar um token usando SOL." });
+    if (BigInt(rawAmount) > BigInt(MAX_BUY_LAMPORTS)) return res.status(400).json({ ok: false, error: "Limite inicial: 0,01 SOL por ordem. Valor acima do limite bloqueado." });
+    const url = new URL("https://api.jup.ag/swap/v2/order");
+    url.searchParams.set("inputMint", inputMint);
+    url.searchParams.set("outputMint", outputMint);
+    url.searchParams.set("amount", rawAmount);
+    url.searchParams.set("taker", taker);
+    const response = await fetch(url, { headers: { "x-api-key": jupiterKey(), "accept": "application/json" }, signal: AbortSignal.timeout(15000) });
+    const payload = await response.json();
+    if (!response.ok) return res.status(502).json({ ok: false, error: payload.error || payload.message || "Jupiter não conseguiu criar a cotação." });
+    if (!payload.transaction || !payload.requestId) return res.status(502).json({ ok: false, error: "Jupiter não retornou uma transação assinável." });
+    return res.json({ ok: true, order: payload });
+  } catch (error) {
+    return res.status(502).json({ ok: false, error: error.message || "Falha ao solicitar cotação à Jupiter." });
+  }
+});
+app.post("/api/jupiter/execute", async (req, res) => {
+  try {
+    if (!jupiterKey()) return res.status(503).json({ ok: false, error: "JUPITER_API_KEY não configurada no servidor." });
+    const { signedTransaction, requestId } = req.body || {};
+    if (typeof signedTransaction !== "string" || signedTransaction.length < 100 || signedTransaction.length > 20000 || typeof requestId !== "string" || requestId.length < 8 || requestId.length > 200) {
+      return res.status(400).json({ ok: false, error: "Transação assinada ou requestId inválido." });
+    }
+    const response = await fetch("https://api.jup.ag/swap/v2/execute", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-api-key": jupiterKey(), "accept": "application/json" },
+      body: JSON.stringify({ signedTransaction, requestId }),
+      signal: AbortSignal.timeout(20000)
+    });
+    const payload = await response.json();
+    if (!response.ok) return res.status(502).json({ ok: false, error: payload.error || payload.message || "Jupiter recusou a execução." });
+    return res.json({ ok: true, result: payload });
+  } catch (error) {
+    return res.status(502).json({ ok: false, error: error.message || "Falha ao enviar transação assinada à Jupiter." });
+  }
+});
+
 app.put("/api/settings", async (req, res) => {
   try { const settings = await engine.updateSettings(req.body); res.json({ ok: true, settings }); }
   catch (error) { res.status(400).json({ ok: false, error: error.message || "Configurações inválidas." }); }
