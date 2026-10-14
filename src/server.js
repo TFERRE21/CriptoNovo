@@ -365,6 +365,12 @@ app.post("/api/live/auto/enable", async (req, res) => {
     return res.json({ ok:true, ...status });
   } catch (error) { return res.status(423).json({ ok:false, error:error.message || "Não foi possível ligar o robô real." }); }
 });
+app.post("/api/live/auto/sell", async (req, res) => {
+  try {
+    if (!liveApiAuthorized(req)) return res.status(401).json({ ok:false, error:"Acesso não autorizado." });
+    return res.json({ ok:true, ...await liveController.sellNow() });
+  } catch (error) { return res.status(423).json({ ok:false, error:error.message || "Não foi possível vender a posição real." }); }
+});
 app.post("/api/live/auto/disable", async (req, res) => {
   try {
     if (!liveApiAuthorized(req)) return res.status(401).json({ ok:false, error:"Acesso não autorizado." });
