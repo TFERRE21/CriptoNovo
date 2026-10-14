@@ -62,6 +62,19 @@ async function getConfirmedBuyCost(signature, tokenAddress) {
   const solUsd = await getSolUsdPrice();
   return { solSpent, solUsd, solCostUsd:solSpent*solUsd, tokenReceived, entryPriceUsd:(solSpent*solUsd)/tokenReceived, feeLamports:Number(tx.meta.fee || 0) };
 }
+async function confirmRealTransaction(signature) {
+  if (!signature || typeof signature !== "string") throw new Error("Sem assinatura da transação; posição mantida para conferência.");
+  const connection = new Connection(String(process.env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com"), "confirmed");
+  const started = Date.now();
+  while (Date.now() - started < 30000) {
+    const response = await connection.getSignatureStatuses([signature], { searchTransactionHistory: true }).catch(() => null);
+    const status = response && response.value && response.value[0];
+    if (status && status.err) throw new Error("Transação falhou na Solana; posição mantida: " + JSON.stringify(status.err).slice(0, 160));
+    if (status && (status.confirmationStatus === "confirmed" || status.confirmationStatus === "finalized")) return true;
+    await new Promise(resolve => setTimeout(resolve, 1500));
+  }
+  throw new Error("Venda enviada, mas sem confirmação da Solana em 30 segundos; posição mantida para reconciliação.");
+}
 async function getOwnedTokenAmountRaw(tokenAddress) {
   const signer = readSigner();
   const connection = new Connection(String(process.env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com"), "confirmed");
@@ -141,7 +154,9 @@ class LiveTradingController {
       const actualAmountRaw = await getOwnedTokenAmountRaw(p.tokenAddress);
       if (!/^[1-9][0-9]*$/.test(actualAmountRaw)) throw new Error("Saldo REAL do token não encontrado nesta carteira. Posição mantida; confira se o token está na carteira configurada.");
       const { result } = await this.swap(p.tokenAddress, SOL_MINT, actualAmountRaw);
-      this.state.lastAction = { side:"SELL_MANUAL", tokenSymbol:p.tokenSymbol, at:new Date().toISOString(), signature:result.signature || result.txid || null };
+      const signature = result.signature || result.txid || null;
+      await confirmRealTransaction(signature);
+      this.state.lastAction = { side:"SELL_MANUAL", tokenSymbol:p.tokenSymbol, at:new Date().toISOString(), signature, confirmed:true };
       this.state.position = null; this.state.lastError = null;
       await writeState(this.state);
       return this.status();
@@ -187,7 +202,9 @@ class LiveTradingController {
           const actualAmountRaw = await getOwnedTokenAmountRaw(p.tokenAddress);
           if (!/^[1-9][0-9]*$/.test(actualAmountRaw)) throw new Error("Saldo REAL do token não encontrado; venda automática não enviada e posição mantida.");
           const { result } = await this.swap(p.tokenAddress, SOL_MINT, actualAmountRaw);
-          this.state.lastAction = { side:"SELL", tokenSymbol:p.tokenSymbol, pct, peakPct:p.peakPct, trailFloorPct:p.trailFloorPct, at:new Date().toISOString(), signature:result.signature || result.txid || null };
+          const signature = result.signature || result.txid || null;
+          await confirmRealTransaction(signature);
+          this.state.lastAction = { side:"SELL", tokenSymbol:p.tokenSymbol, pct, peakPct:p.peakPct, trailFloorPct:p.trailFloorPct, at:new Date().toISOString(), signature, confirmed:true };
           this.state.position = null; this.state.lastError = null; await writeState(this.state);
         }
         return;
