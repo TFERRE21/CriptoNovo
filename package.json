@@ -6,7 +6,7 @@
   "main": "src/server.js",
   "scripts": {
     "start": "npm run build && node src/server.js",
-    "check": "node --check src/server.js && node --check src/engine.js",
+    "check": "node --check src/server.js && node --check src/engine.js && node --check src/live-trading-controller.js",
     "build": "esbuild public/wallet-connect-entry.js --bundle --platform=browser --format=iife --target=es2020 --outfile=public/wallet-connect.js"
   },
   "engines": {
