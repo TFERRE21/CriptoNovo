@@ -61,81 +61,21 @@ function installManualSwapPanel() {
     else { status.textContent = "JUPITER_API_KEY não detectada no servidor. Verifique a variável no VPS."; btn.disabled = true; }
   }).catch(() => { status.textContent = "Não foi possível verificar a configuração Jupiter."; btn.disabled = true; });
   btn.textContent = "Abrir compra na Jupiter";
-  btn.addEventListener("click", async () => {
+  btn.addEventListener("click", () => {
     const mint = box.querySelector("#jupiterTokenMint").value.trim();
     if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(mint)) {
       status.textContent = "Mint inválido. Confira o endereço do token antes de abrir a Jupiter.";
       return;
     }
     const url = "https://jup.ag/swap/SOL-" + encodeURIComponent(mint);
-    const opened = window.open(url, "_blank", "noopener,noreferrer");
-    status.textContent = opened
-      ? "Jupiter aberta em outra aba. Conecte a carteira diretamente na Jupiter; a CriptoNovo não solicitará assinatura."
-      : "O navegador bloqueou a nova aba. Permita pop-ups para este site e clique novamente.";
-    return;
-    status.textContent = "Clique recebido. Validando carteira e dados…";
-    if (!adapter || !adapter.connected || !adapter.publicKey) {
-      status.textContent = "Conecte a Binance Web3 Wallet primeiro.";
-      return;
+    const opened = window.open(url, "_blank");
+    if (opened) {
+      opened.opener = null;
+      status.textContent = "Jupiter aberta em outra aba. Conecte sua carteira diretamente na Jupiter e confira token, valor e taxas antes de assinar.";
+    } else {
+      status.textContent = "O navegador bloqueou a nova aba. Permita pop-ups para este site e clique novamente.";
     }
-    const connectedAddress = adapter.publicKey.toBase58();
-    if (connectedAddress !== EXPECTED_SOLANA_WALLET) {
-      status.textContent = "Compra bloqueada: a carteira conectada (" + connectedAddress + ") é diferente da carteira informada pelo usuário (" + EXPECTED_SOLANA_WALLET + "). Desconecte e conecte a carteira correta. Nenhuma cotação foi solicitada.";
-      return;
-    }
-    const mint = box.querySelector("#jupiterTokenMint").value.trim();
-    const sol = Number(box.querySelector("#jupiterSolAmount").value);
-    if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(mint)) { status.textContent = "Mint inválido. Confira o endereço oficial do token."; return; }
-    if (!Number.isFinite(sol) || sol < 0.001 || sol > 0.01) { status.textContent = "O valor deve ser de 0,001 a 0,01 SOL."; return; }
-    const lamports = String(Math.floor(sol * 1_000_000_000));
-    if (!window.confirm("Você está solicitando uma COMPRA REAL na Solana.\n\nEntrada: " + sol + " SOL, mais taxas.\nToken mint: " + mint + "\n\nA próxima tela deve mostrar a transação na sua carteira. Só aprove se conferir os dados. Continuar?")) return;
-    btn.disabled = true;
-    try {
-      status.textContent = "Buscando cotação na Jupiter…";
-      const orderResponse = await fetch("/api/jupiter/order", {
-        method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ inputMint: "So11111111111111111111111111111111111111112", outputMint: mint, amount: lamports, taker: adapter.publicKey.toBase58() })
-      });
-      const orderBody = await orderResponse.json();
-      if (!orderResponse.ok || !orderBody.ok) { const d = orderBody.diagnostic || {}; const detail = [d.router ? "roteador: " + d.router : "", d.errorCode != null ? "código: " + d.errorCode : "", d.apiMessage || ""].filter(Boolean).join(" · "); if (/insufficient funds/i.test(d.apiMessage || "")) throw new Error("Saldo insuficiente na carteira informada à Jupiter. Confira se o endereço conectado é o mesmo que mostra seu saldo e reserve SOL para taxas e criação da conta do token. A tentativa não foi enviada para assinatura."); throw new Error((orderBody.error || "Não foi possível obter a cotação.") + (detail ? " Detalhes: " + detail : "")); }
-      const order = orderBody.order;
-      const out = String(order.outAmount || "não informado");
-      const impact = order.priceImpactPct == null ? "não informado" : String(order.priceImpactPct) + "%";
-      if (!window.confirm("CONFIRA ANTES DE ASSINAR\n\nEntrada: " + sol + " SOL\nQuantidade de saída (unidade mínima do token): " + out + "\nImpacto estimado: " + impact + "\nMint: " + mint + "\n\nA quantidade pode estar em unidades mínimas e não equivale necessariamente a tokens inteiros. Continuar para a carteira?")) {
-        status.textContent = "Compra cancelada antes da assinatura.";
-        return;
-      }
-      if (typeof adapter.signTransaction !== "function") throw new Error("Esta carteira não disponibilizou assinatura de transação. Nenhuma compra foi enviada.");
-      status.textContent = "Solicitando assinatura na Binance Web3 Wallet…";
-      const tx = VersionedTransaction.deserialize(Uint8Array.from(atob(order.transaction), c => c.charCodeAt(0)));
-      const signed = await adapter.signTransaction(tx);
-      const signedTransaction = btoa(String.fromCharCode(...signed.serialize()));
-      status.textContent = "Enviando transação assinada à Jupiter…";
-      const executeResponse = await fetch("/api/jupiter/execute", {
-        method: "POST", headers: { "content-type": "application/json" },
-        body: JSON.stringify({ signedTransaction, requestId: order.requestId })
-      });
-      const executeBody = await executeResponse.json();
-      if (!executeResponse.ok || !executeBody.ok) throw new Error(executeBody.error || "A Jupiter não confirmou a execução.");
-      const result = executeBody.result || {};
-      const signature = result.signature || result.txid || result.transactionSignature || "";
-      status.textContent = signature
-        ? "Jupiter retornou a execução. Assinatura: " + signature + " · confira a confirmação na Solana Explorer."
-        : "Resposta da Jupiter recebida. Verifique o resultado e a assinatura na atividade da carteira antes de repetir.";
-      if (signature) {
-        const link = document.createElement("a");
-        link.href = "https://solscan.io/tx/" + encodeURIComponent(signature);
-        link.target = "_blank"; link.rel = "noopener noreferrer"; link.textContent = "Abrir transação no Solscan";
-        link.style.cssText = "display:block;margin-top:8px;color:#60a5fa";
-        status.appendChild(document.createTextNode(" "));
-        status.appendChild(link);
-      }
-    } catch (error) {
-      status.textContent = "Compra não confirmada: " + (error?.message || String(error)) + ". Confira a atividade da carteira antes de tentar novamente.";
-    } finally {
-      btn.disabled = false;
-    }
-  });
+  });;
 }
 
 async function initWalletConnect() {
