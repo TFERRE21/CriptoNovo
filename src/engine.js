@@ -219,11 +219,11 @@ function evaluatePair(pair, now = Date.now()) {
     strategy = "SOLANA_FAST_FLOW";
     const minAgeMinutes = numEnv("SOL_MIN_AGE_MINUTES", 0);
     const maxAgeHours = numEnv("SOL_MAX_AGE_HOURS", 2160);
-    const minLiq = numEnv("SOL_MIN_LIQUIDITY_USD", 15000);
-    const minVol5m = numEnv("SOL_MIN_VOLUME_5M_USD", 1000);
-    const minTx5m = numEnv("SOL_MIN_TXNS_5M", 6);
-    const minRatio = numEnv("SOL_MIN_BUY_SELL_RATIO_5M", 1.2);
-    const maxChange5m = numEnv("SOL_MAX_PRICE_CHANGE_5M_PCT", 10);
+    const minLiq = numEnv("SOL_MIN_LIQUIDITY_USD", 25000);
+    const minVol5m = numEnv("SOL_MIN_VOLUME_5M_USD", 2500);
+    const minTx5m = numEnv("SOL_MIN_TXNS_5M", 10);
+    const minRatio = numEnv("SOL_MIN_BUY_SELL_RATIO_5M", 1.5);
+    const maxChange5m = numEnv("SOL_MAX_PRICE_CHANGE_5M_PCT", 6);
     if (!Number.isFinite(ageHours) || ageHours * 60 < minAgeMinutes || ageHours > maxAgeHours) reasons.push("Solana: par fora da janela inicial de lançamento");
     if (liquidity < minLiq) reasons.push(`Solana: liquidez abaixo de US$${minLiq}`);
     if (volume5m < minVol5m) reasons.push(`Solana: volume de 5 min abaixo de US$${minVol5m}`);
@@ -232,7 +232,7 @@ function evaluatePair(pair, now = Date.now()) {
     if (priceChange5m <= 0) reasons.push("Solana: momentum de 5 min não positivo");
     if (priceChange5m > maxChange5m) reasons.push("Solana: alta de 5 min excessiva; possível compra no topo");
     if (priceChange15m <= 0) reasons.push("Solana: tendência de 15 min sem confirmação positiva");
-    if (priceChange15m > numEnv("SOL_MAX_PRICE_CHANGE_15M_PCT", 12)) reasons.push("Solana: alta de 15 min excessiva; risco de entrada atrasada");
+    if (priceChange15m > numEnv("SOL_MAX_PRICE_CHANGE_15M_PCT", 8)) reasons.push("Solana: alta de 15 min excessiva; risco de entrada atrasada");
     if (priceChange1h < numEnv("SOL_MIN_PRICE_CHANGE_1H_PCT", -5)) reasons.push("Solana: tendência de 1 hora muito fraca");
     // Para projetos muito novos com liquidez/volume fortes, permitir continuação de tendência
     // até +80% em 1h; ainda exigir confirmação de fluxo e momentum curto para não comprar um candle isolado.
