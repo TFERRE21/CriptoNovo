@@ -7,6 +7,7 @@ const connectBtn = document.getElementById("walletConnectConnect");
 const disconnectBtn = document.getElementById("walletConnectDisconnect");
 
 let adapter = null;
+const EXPECTED_SOLANA_WALLET = "EBfqqSSXikpujiBQEZLaYFUCcKHwRbGT9QYVYq9Q8vhp";
 
 function setStatus(message, kind = "info") {
   if (!statusEl) return;
@@ -44,6 +45,11 @@ function installManualSwapPanel() {
     status.textContent = "Clique recebido. Validando carteira e dados…";
     if (!adapter || !adapter.connected || !adapter.publicKey) {
       status.textContent = "Conecte a Binance Web3 Wallet primeiro.";
+      return;
+    }
+    const connectedAddress = adapter.publicKey.toBase58();
+    if (connectedAddress !== EXPECTED_SOLANA_WALLET) {
+      status.textContent = "Compra bloqueada: a carteira conectada (" + connectedAddress + ") é diferente da carteira informada pelo usuário (" + EXPECTED_SOLANA_WALLET + "). Desconecte e conecte a carteira correta. Nenhuma cotação foi solicitada.";
       return;
     }
     const mint = box.querySelector("#jupiterTokenMint").value.trim();
