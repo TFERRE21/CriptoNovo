@@ -31,6 +31,22 @@ function readSigner() {
     throw new Error("A chave privada não corresponde ao endereço público configurado.");
   return signer;
 }
+async function getSolanaTokenPrice(tokenAddress, preferredPairAddress) {
+  const urls = preferredPairAddress
+    ? ["https://api.dexscreener.com/latest/dex/pairs/solana/" + encodeURIComponent(preferredPairAddress), "https://api.dexscreener.com/latest/dex/tokens/" + encodeURIComponent(tokenAddress)]
+    : ["https://api.dexscreener.com/latest/dex/tokens/" + encodeURIComponent(tokenAddress)];
+  for (const url of urls) {
+    try {
+      const response = await fetch(url, { signal: AbortSignal.timeout(8000), headers: { accept: "application/json" } });
+      if (!response.ok) continue;
+      const data = await response.json().catch(() => ({}));
+      const pairs = (data.pairs || []).filter(x => x.chainId === "solana" && String(x.baseToken?.address || "").toLowerCase() === String(tokenAddress).toLowerCase() && Number(x.priceUsd) > 0);
+      pairs.sort((a,b) => Number(b.liquidity?.usd || 0) - Number(a.liquidity?.usd || 0));
+      if (pairs[0]) return { priceUsd:Number(pairs[0].priceUsd), pairAddress:pairs[0].pairAddress || preferredPairAddress || null, liquidityUsd:Number(pairs[0].liquidity?.usd || 0), source:"DexScreener" };
+    } catch (_) {}
+  }
+  return null;
+}
 function enabledByEnv() { return String(process.env.LIVE_TRADING_ENABLED || "").toLowerCase() === "true"; }
 function apiKey() { return String(process.env.JUPITER_API_KEY || "").trim(); }
 async function readState() {
@@ -51,7 +67,7 @@ class LiveTradingController {
     const lastAction = this.state?.lastAction || null;
     return {
       enabled: Boolean(this.state?.enabled && enabledByEnv()), envEnabled: enabledByEnv(),
-      openPosition: p ? { mode:"REAL", tokenSymbol:p.tokenSymbol, tokenAddress:p.tokenAddress, pairAddress:p.pairAddress || null, openedAt:p.openedAt, entryPriceUsd:p.entryPriceUsd, lastPriceUsd:p.lastPriceUsd || null, currentPct:p.lastPct ?? null, peakPct:p.peakPct, trailFloorPct:p.trailFloorPct, tokenAmountRaw:p.tokenAmountRaw, signature:p.signature || null } : null,
+      openPosition: p ? { mode:"REAL", tokenSymbol:p.tokenSymbol, tokenAddress:p.tokenAddress, pairAddress:p.pairAddress || null, openedAt:p.openedAt, entryPriceUsd:p.entryPriceUsd, lastPriceUsd:p.lastPriceUsd || null, currentPct:p.lastPct ?? null, peakPct:p.peakPct, trailFloorPct:p.trailFloorPct, tokenAmountRaw:p.tokenAmountRaw, signature:p.signature || null, lastCheckedAt:p.lastCheckedAt || null, priceSource:p.priceSource || null, priceLiquidityUsd:p.priceLiquidityUsd || 0 } : null,
       lastAction, lastError: this.state?.lastError || null, pollMs: POLL_MS,
       buyCapSol: BUY_LAMPORTS / 1e9, trailingStepPct: TRAIL_STEP_PCT,
       note: "Estado e histórico REAL separados da simulação; execução em mainnet pode perder capital."
@@ -109,26 +125,11 @@ class LiveTradingController {
     try {
       if (this.state.position) {
         const p = this.state.position;
-        let priceUsd = 0;
-        const candidates = this.engine.snapshot().candidates || [];
-        const candidate = candidates.find(x => String(x.tokenAddress).toLowerCase() === p.tokenAddress.toLowerCase() && x.chainId === "solana");
-        if (Number(candidate?.priceUsd) > 0) priceUsd = Number(candidate.priceUsd);
-        // Position monitoring must not depend on the token remaining in the ranking.
-        if (!(priceUsd > 0)) {
-          const url = p.pairAddress
-            ? "https://api.dexscreener.com/latest/dex/pairs/solana/" + encodeURIComponent(p.pairAddress)
-            : "https://api.dexscreener.com/latest/dex/tokens/" + encodeURIComponent(p.tokenAddress);
-          const response = await fetch(url, { signal: AbortSignal.timeout(8000) });
-          const data = await response.json().catch(() => ({}));
-          const pairs = (data.pairs || []).filter(x => x.chainId === "solana" && String(x.baseToken?.address || x.quoteToken?.address || "").length > 0);
-          const pair = pairs.find(x => String(x.baseToken?.address || "").toLowerCase() === p.tokenAddress.toLowerCase())
-            || pairs.find(x => String(x.quoteToken?.address || "").toLowerCase() === p.tokenAddress.toLowerCase())
-            || pairs[0];
-          if (response.ok && Number(pair?.priceUsd) > 0) {
-            priceUsd = Number(pair.priceUsd);
-            p.pairAddress = pair.pairAddress || p.pairAddress;
-          }
-        }
+        const quote = await getSolanaTokenPrice(p.tokenAddress, p.pairAddress);
+        const priceUsd = Number(quote?.priceUsd || 0);
+        if (quote?.pairAddress) p.pairAddress = quote.pairAddress;
+        p.priceSource = quote?.source || null;
+        p.priceLiquidityUsd = quote?.liquidityUsd || 0;
         if (!(priceUsd > 0) || !(Number(p.entryPriceUsd) > 0)) {
           this.state.lastError = "Preço REAL indisponível para " + p.tokenSymbol + "; posição mantida aberta, sem venda presumida.";
           await writeState(this.state); return;
