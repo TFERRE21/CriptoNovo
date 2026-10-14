@@ -31,6 +31,37 @@ function readSigner() {
     throw new Error("A chave privada não corresponde ao endereço público configurado.");
   return signer;
 }
+async function getSolUsdPrice() {
+  const r = await fetch("https://api.dexscreener.com/latest/dex/tokens/" + SOL_MINT, { signal: AbortSignal.timeout(8000), headers: { accept:"application/json" } });
+  if (!r.ok) throw new Error("Cotação SOL/USD indisponível para calcular custo real.");
+  const d = await r.json();
+  const pairs = (d.pairs || []).filter(p => p.chainId === "solana" && String(p.baseToken?.address || "") === SOL_MINT && Number(p.priceUsd) > 0);
+  pairs.sort((a,b) => Number(b.liquidity?.usd || 0) - Number(a.liquidity?.usd || 0));
+  if (!pairs[0]) throw new Error("Cotação SOL/USD indisponível; custo real não calculado.");
+  return Number(pairs[0].priceUsd);
+}
+async function getConfirmedBuyCost(signature, tokenAddress) {
+  if (!signature) throw new Error("Assinatura ausente; custo real não confirmado.");
+  const signer = readSigner();
+  const connection = new Connection(String(process.env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com"), "confirmed");
+  let tx = null;
+  for (let i=0; i<5 && !tx; i++) {
+    tx = await connection.getParsedTransaction(signature, { commitment:"confirmed", maxSupportedTransactionVersion:0 }).catch(()=>null);
+    if (!tx) await new Promise(resolve => setTimeout(resolve, 1200));
+  }
+  if (!tx?.meta || tx.meta.err) throw new Error("Compra ainda não confirmada; executor não abrirá outra posição.");
+  const owner = signer.publicKey.toBase58();
+  const keys = tx.transaction.message.accountKeys || [];
+  const index = keys.findIndex(k => (k.pubkey?.toBase58?.() || String(k.pubkey || k)) === owner);
+  if (index < 0) throw new Error("Carteira não encontrada na transação confirmada.");
+  const solSpent = Math.max(0, Number(tx.meta.preBalances[index] || 0) - Number(tx.meta.postBalances[index] || 0)) / 1e9;
+  const pre = (tx.meta.preTokenBalances || []).filter(x => x.owner === owner && x.mint === tokenAddress).reduce((n,x)=>n+Number(x.uiTokenAmount?.uiAmountString || 0),0);
+  const post = (tx.meta.postTokenBalances || []).filter(x => x.owner === owner && x.mint === tokenAddress).reduce((n,x)=>n+Number(x.uiTokenAmount?.uiAmountString || 0),0);
+  const tokenReceived = Math.max(0, post-pre);
+  if (!(solSpent > 0) || !(tokenReceived > 0)) throw new Error("Não foi possível apurar SOL gasto e tokens recebidos na compra.");
+  const solUsd = await getSolUsdPrice();
+  return { solSpent, solUsd, solCostUsd:solSpent*solUsd, tokenReceived, entryPriceUsd:(solSpent*solUsd)/tokenReceived, feeLamports:Number(tx.meta.fee || 0) };
+}
 async function getOwnedTokenAmountRaw(tokenAddress) {
   const signer = readSigner();
   const connection = new Connection(String(process.env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com"), "confirmed");
@@ -169,10 +200,13 @@ class LiveTradingController {
       const balance = await connection.getBalance(signer.publicKey, "confirmed");
       if (balance < BUY_LAMPORTS + RESERVE_LAMPORTS) throw new Error("Saldo SOL abaixo do valor da ordem mais reserva de taxas.");
       const { order, result } = await this.swap(SOL_MINT, c.tokenAddress, BUY_LAMPORTS);
+      const signature = result.signature || result.txid || null;
       const raw = String(order.outputAmount || order.outAmount || "");
-      if (!/^[1-9][0-9]*$/.test(raw)) throw new Error("Compra enviada, mas Jupiter não retornou quantidade de token verificável; interrompido para evitar duplicar compra.");
-      this.state.position = { tokenAddress:c.tokenAddress, tokenSymbol:c.tokenSymbol || "?", pairAddress:c.pairAddress, entryPriceUsd:Number(c.priceUsd), lastPriceUsd:Number(c.priceUsd), tokenAmountRaw:raw, peakPct:0, trailFloorPct:0, openedAt:new Date().toISOString(), signature:result.signature || result.txid || null };
-      this.state.lastAction = { side:"BUY", tokenSymbol:c.tokenSymbol, at:new Date().toISOString(), signature:result.signature || result.txid || null };
+      if (!/^[1-9][0-9]*$/.test(raw)) throw new Error("Compra executada, mas quantidade cotada ausente; executor interrompido para evitar duplicidade.");
+      const actual = await getConfirmedBuyCost(signature, c.tokenAddress);
+      const actualRaw = await getOwnedTokenAmountRaw(c.tokenAddress);
+      this.state.position = { tokenAddress:c.tokenAddress, tokenSymbol:c.tokenSymbol || "?", pairAddress:c.pairAddress, entryPriceUsd:actual.entryPriceUsd, lastPriceUsd:null, tokenAmountRaw:actualRaw, actualTokenAmount:actual.tokenReceived, actualSolSpent:actual.solSpent, actualSolUsd:actual.solUsd, entryCostUsd:actual.solCostUsd, buyFeeLamports:actual.feeLamports, accountingSource:"confirmed_onchain_transaction", peakPct:0, trailFloorPct:0, openedAt:new Date().toISOString(), signature };
+      this.state.lastAction = { side:"BUY", tokenSymbol:c.tokenSymbol, at:new Date().toISOString(), signature, actualSolSpent:actual.solSpent, entryCostUsd:actual.solCostUsd, buyFeeLamports:actual.feeLamports };
       this.state.lastError = null; await writeState(this.state);
     } finally { this.busy = false; }
   }
