@@ -60,7 +60,19 @@ function installManualSwapPanel() {
     if (s.configured) { status.textContent = "API configurada. Compra manual; assinatura obrigatória."; btn.disabled = false; }
     else { status.textContent = "JUPITER_API_KEY não detectada no servidor. Verifique a variável no VPS."; btn.disabled = true; }
   }).catch(() => { status.textContent = "Não foi possível verificar a configuração Jupiter."; btn.disabled = true; });
+  btn.textContent = "Abrir compra na Jupiter";
   btn.addEventListener("click", async () => {
+    const mint = box.querySelector("#jupiterTokenMint").value.trim();
+    if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(mint)) {
+      status.textContent = "Mint inválido. Confira o endereço do token antes de abrir a Jupiter.";
+      return;
+    }
+    const url = "https://jup.ag/swap/SOL-" + encodeURIComponent(mint);
+    const opened = window.open(url, "_blank", "noopener,noreferrer");
+    status.textContent = opened
+      ? "Jupiter aberta em outra aba. Conecte a carteira diretamente na Jupiter; a CriptoNovo não solicitará assinatura."
+      : "O navegador bloqueou a nova aba. Permita pop-ups para este site e clique novamente.";
+    return;
     status.textContent = "Clique recebido. Validando carteira e dados…";
     if (!adapter || !adapter.connected || !adapter.publicKey) {
       status.textContent = "Conecte a Binance Web3 Wallet primeiro.";
