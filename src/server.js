@@ -152,6 +152,50 @@ app.get("/api/live/status", (_req, res) => {
 });
 
 // Read-only live-trading preflight: validates signer, Jupiter key and SOL balance without signing/sending a transaction.
+// Dry-run: request a Jupiter order and locally sign it, but never submit it to the network.
+app.post("/api/live/dry-run", async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  try {
+    const expected = String(process.env.LIVE_TRADING_API_TOKEN || "");
+    const got = String(req.headers.authorization || "").replace(/^Bearer\\s+/i, "");
+    if (expected.length < 32 || !got || got !== expected) return res.status(401).json({ ok: false, error: "Acesso não autorizado." });
+    if (String(process.env.LIVE_TRADING_ENABLED || "").toLowerCase() === "true")
+      return res.status(423).json({ ok: false, error: "Desative LIVE_TRADING_ENABLED antes do dry-run." });
+    const cfg = liveTradingConfig();
+    if (!cfg.signerValid || !cfg.signerMatches || !cfg.jupiterConfigured)
+      return res.status(423).json({ ok: false, error: "Pré-requisitos da carteira/Jupiter não passaram." });
+    const outputMint = String(req.body?.outputMint || "");
+    const amount = String(req.body?.amount || "1000000");
+    if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(outputMint) || outputMint === SOL_MINT)
+      return res.status(400).json({ ok: false, error: "Informe outputMint de um token Solana válido; SOL não pode ser o token de saída." });
+    if (!/^[1-9][0-9]{0,18}$/.test(amount) || BigInt(amount) > 1000000n)
+      return res.status(400).json({ ok: false, error: "Dry-run limitado a no máximo 0,001 SOL (1.000.000 lamports)." });
+    const { Keypair, VersionedTransaction } = require("@solana/web3.js");
+    const signer = Keypair.fromSecretKey(parseSolanaSecret(process.env.SOLANA_TRADING_SECRET_KEY));
+    const url = new URL("https://api.jup.ag/swap/v2/order");
+    url.searchParams.set("inputMint", SOL_MINT);
+    url.searchParams.set("outputMint", outputMint);
+    url.searchParams.set("amount", amount);
+    url.searchParams.set("taker", signer.publicKey.toBase58());
+    const response = await fetch(url, { headers: { "x-api-key": jupiterKey(), "accept": "application/json" }, signal: AbortSignal.timeout(15000) });
+    const order = await response.json();
+    if (!response.ok || !order.transaction || !order.requestId)
+      return res.status(502).json({ ok: false, error: order.error || order.errorMessage || order.message || "Jupiter não gerou uma ordem para o teste.", diagnostic: { httpStatus: response.status, errorCode: order.errorCode ?? null } });
+    const tx = VersionedTransaction.deserialize(Buffer.from(order.transaction, "base64"));
+    tx.sign([signer]);
+    const signed = Buffer.from(tx.serialize()).toString("base64");
+    return res.json({
+      ok: true, mode: "DRY_RUN", transactionSent: false, transactionSigned: true,
+      walletAddress: signer.publicKey.toBase58(), inputMint: SOL_MINT, outputMint,
+      amountLamports: amount, signedTransactionBytes: Buffer.from(signed, "base64").length,
+      requestIdReceived: Boolean(order.requestId), router: order.router || null,
+      note: "Transação assinada apenas em memória e descartada; não foi transmitida nem executada."
+    });
+  } catch (error) {
+    return res.status(502).json({ ok: false, error: error.message || "Falha no dry-run." });
+  }
+});
+
 app.get("/api/live/preflight", async (_req, res) => {
   res.set("Cache-Control", "no-store");
   const cfg = liveTradingConfig();
