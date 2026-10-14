@@ -37,10 +37,11 @@ function installManualSwapPanel() {
   const btn = box.querySelector("#jupiterBuyButton");
   const status = box.querySelector("#jupiterSwapStatus");
   fetch("/api/jupiter/status", { cache: "no-store" }).then(r => r.json()).then(s => {
-    if (s.configured) status.textContent = "API configurada. A compra continua manual e depende de assinatura.";
-    else status.textContent = "JUPITER_API_KEY não detectada no servidor. Verifique a variável no VPS.";
-  }).catch(() => { status.textContent = "Não foi possível verificar a configuração Jupiter."; });
+    if (s.configured) { status.textContent = "API configurada. Compra manual; assinatura obrigatória."; btn.disabled = false; }
+    else { status.textContent = "JUPITER_API_KEY não detectada no servidor. Verifique a variável no VPS."; btn.disabled = true; }
+  }).catch(() => { status.textContent = "Não foi possível verificar a configuração Jupiter."; btn.disabled = true; });
   btn.addEventListener("click", async () => {
+    status.textContent = "Clique recebido. Validando carteira e dados…";
     if (!adapter || !adapter.connected || !adapter.publicKey) {
       status.textContent = "Conecte a Binance Web3 Wallet primeiro.";
       return;
