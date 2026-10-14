@@ -172,6 +172,68 @@ app.post("/api/jupiter/execute", async (req, res) => {
   }
 });
 
+
+// Gated live swap executor. Disabled unless the VPS explicitly enables it and
+// a private API token + matching Solana signer are configured. Never expose secrets in source.
+const LIVE_SWAP_MAX_BUY_LAMPORTS = 1000000; // 0.001 SOL per buy during initial validation
+function liveApiAuthorized(req) {
+  const expected = String(process.env.LIVE_TRADING_API_TOKEN || "");
+  const got = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
+  return expected.length >= 32 && got.length > 0 && got === expected;
+}
+app.post("/api/live/swap", async (req, res) => {
+  res.set("Cache-Control", "no-store");
+  try {
+    if (!liveApiAuthorized(req)) return res.status(401).json({ ok: false, error: "Acesso não autorizado. Configure um token privado no VPS." });
+    const cfg = liveTradingConfig();
+    if (String(process.env.LIVE_TRADING_ENABLED || "").toLowerCase() !== "true")
+      return res.status(423).json({ ok: false, error: "Operações reais desativadas. LIVE_TRADING_ENABLED não está true." });
+    if (!cfg.signerValid || !cfg.signerMatches || !cfg.jupiterConfigured)
+      return res.status(423).json({ ok: false, error: "Assinante inválido, endereço divergente ou chave Jupiter ausente.", diagnostics: { signerValid: cfg.signerValid, signerMatches: cfg.signerMatches, jupiterConfigured: cfg.jupiterConfigured } });
+    const { inputMint, outputMint, amount } = req.body || {};
+    const rawAmount = String(amount || "");
+    const validMint = value => typeof value === "string" && /^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(value);
+    if (!validMint(inputMint) || !validMint(outputMint) || inputMint === outputMint || !/^[1-9][0-9]{0,18}$/.test(rawAmount))
+      return res.status(400).json({ ok: false, error: "inputMint, outputMint ou amount inválido." });
+    // For initial rollout only SOL buys (capped at 0.001 SOL) and token-to-SOL sells.
+    const isBuy = inputMint === SOL_MINT && outputMint !== SOL_MINT;
+    const isSell = inputMint !== SOL_MINT && outputMint === SOL_MINT;
+    if (!isBuy && !isSell) return res.status(400).json({ ok: false, error: "Apenas compras SOL→token e vendas token→SOL são permitidas." });
+    if (isBuy && BigInt(rawAmount) > BigInt(LIVE_SWAP_MAX_BUY_LAMPORTS))
+      return res.status(400).json({ ok: false, error: "Limite inicial por compra: 0,001 SOL." });
+    const { Keypair, VersionedTransaction } = require("@solana/web3.js");
+    const bytes = JSON.parse(String(process.env.SOLANA_TRADING_SECRET_KEY || ""));
+    const signer = Keypair.fromSecretKey(Uint8Array.from(bytes));
+    if (signer.publicKey.toBase58() !== String(process.env.SOLANA_TRADING_WALLET_ADDRESS || ""))
+      return res.status(423).json({ ok: false, error: "O assinante não corresponde ao endereço Solana configurado." });
+    const orderUrl = new URL("https://api.jup.ag/swap/v2/order");
+    orderUrl.searchParams.set("inputMint", inputMint);
+    orderUrl.searchParams.set("outputMint", outputMint);
+    orderUrl.searchParams.set("amount", rawAmount);
+    orderUrl.searchParams.set("taker", signer.publicKey.toBase58());
+    const orderResponse = await fetch(orderUrl, { headers: { "x-api-key": jupiterKey(), "accept": "application/json" }, signal: AbortSignal.timeout(15000) });
+    const order = await orderResponse.json();
+    if (!orderResponse.ok || !order.transaction || !order.requestId)
+      return res.status(502).json({ ok: false, error: order.error || order.errorMessage || order.message || "Jupiter não gerou uma ordem executável.", diagnostic: { httpStatus: orderResponse.status, errorCode: order.errorCode ?? null } });
+    const tx = VersionedTransaction.deserialize(Buffer.from(order.transaction, "base64"));
+    tx.sign([signer]);
+    const signedTransaction = Buffer.from(tx.serialize()).toString("base64");
+    const executeResponse = await fetch("https://api.jup.ag/swap/v2/execute", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-api-key": jupiterKey(), "accept": "application/json" },
+      body: JSON.stringify({ signedTransaction, requestId: order.requestId }),
+      signal: AbortSignal.timeout(20000)
+    });
+    const execution = await executeResponse.json();
+    if (!executeResponse.ok || execution.error || execution.status === "Failed")
+      return res.status(502).json({ ok: false, error: execution.error || execution.message || "Jupiter não confirmou a execução.", result: execution });
+    return res.json({ ok: true, mode: "LIVE", side: isBuy ? "BUY" : "SELL", inputMint, outputMint, amount: rawAmount, result: execution, warning: "Transação enviada à Jupiter. Confirme a assinatura/resultado na rede antes de contabilizar a posição." });
+  } catch (error) {
+    console.error("Live swap failed:", error);
+    return res.status(502).json({ ok: false, error: error.message || "Falha no executor de swap." });
+  }
+});
+
 app.put("/api/settings", async (req, res) => {
   try { const settings = await engine.updateSettings(req.body); res.json({ ok: true, settings }); }
   catch (error) { res.status(400).json({ ok: false, error: error.message || "Configurações inválidas." }); }
