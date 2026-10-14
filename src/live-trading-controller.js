@@ -31,6 +31,17 @@ function readSigner() {
     throw new Error("A chave privada não corresponde ao endereço público configurado.");
   return signer;
 }
+async function getOwnedTokenAmountRaw(tokenAddress) {
+  const signer = readSigner();
+  const connection = new Connection(String(process.env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com"), "confirmed");
+  const accounts = await connection.getParsedTokenAccountsByOwner(signer.publicKey, { mint: new PublicKey(tokenAddress) }, "confirmed");
+  let total = 0n;
+  for (const account of accounts.value || []) {
+    const raw = account.account?.data?.parsed?.info?.tokenAmount?.amount;
+    if (typeof raw === "string" && /^[0-9]+$/.test(raw)) total += BigInt(raw);
+  }
+  return total.toString();
+}
 async function getSolanaTokenPrice(tokenAddress, preferredPairAddress) {
   const urls = preferredPairAddress
     ? ["https://api.dexscreener.com/latest/dex/pairs/solana/" + encodeURIComponent(preferredPairAddress), "https://api.dexscreener.com/latest/dex/tokens/" + encodeURIComponent(tokenAddress)]
@@ -96,7 +107,9 @@ class LiveTradingController {
     this.busy = true;
     try {
       const p = this.state.position;
-      const { result } = await this.swap(p.tokenAddress, SOL_MINT, p.tokenAmountRaw);
+      const actualAmountRaw = await getOwnedTokenAmountRaw(p.tokenAddress);
+      if (!/^[1-9][0-9]*$/.test(actualAmountRaw)) throw new Error("Saldo REAL do token não encontrado nesta carteira. Posição mantida; confira se o token está na carteira configurada.");
+      const { result } = await this.swap(p.tokenAddress, SOL_MINT, actualAmountRaw);
       this.state.lastAction = { side:"SELL_MANUAL", tokenSymbol:p.tokenSymbol, at:new Date().toISOString(), signature:result.signature || result.txid || null };
       this.state.position = null; this.state.lastError = null;
       await writeState(this.state);
@@ -116,7 +129,7 @@ class LiveTradingController {
     const signedTransaction = Buffer.from(tx.serialize()).toString("base64");
     const er = await fetch("https://api.jup.ag/swap/v2/execute", { method:"POST", headers:{"content-type":"application/json","x-api-key":apiKey(),accept:"application/json"}, body:JSON.stringify({signedTransaction,requestId:order.requestId}), signal:AbortSignal.timeout(20000) });
     const result = await er.json();
-    if (!er.ok || result.error || result.status === "Failed") throw new Error(result.error || result.message || "Jupiter não confirmou a transação.");
+    if (!er.ok || result.error || result.status === "Failed" || (result.status && result.status !== "Success")) throw new Error(result.error || result.message || result.code || "Jupiter não confirmou a transação.");
     return { order, result };
   }
   async tick() {
@@ -140,7 +153,9 @@ class LiveTradingController {
         p.lastPct = pct; p.lastPriceUsd = priceUsd; p.lastCheckedAt = new Date().toISOString();
         await writeState(this.state);
         if (p.peakPct >= TRAIL_STEP_PCT && pct <= p.trailFloorPct) {
-          const { result } = await this.swap(p.tokenAddress, SOL_MINT, p.tokenAmountRaw);
+          const actualAmountRaw = await getOwnedTokenAmountRaw(p.tokenAddress);
+          if (!/^[1-9][0-9]*$/.test(actualAmountRaw)) throw new Error("Saldo REAL do token não encontrado; venda automática não enviada e posição mantida.");
+          const { result } = await this.swap(p.tokenAddress, SOL_MINT, actualAmountRaw);
           this.state.lastAction = { side:"SELL", tokenSymbol:p.tokenSymbol, pct, peakPct:p.peakPct, trailFloorPct:p.trailFloorPct, at:new Date().toISOString(), signature:result.signature || result.txid || null };
           this.state.position = null; this.state.lastError = null; await writeState(this.state);
         }
