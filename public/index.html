@@ -341,38 +341,5 @@ document.querySelector('#refresh').onclick=refresh;loadUsdBrl().then(refresh);re
     }
   },true);
 })();
-</script><script>
-(function(){
- const token=()=>document.getElementById('liveApiToken').value.trim();
- const msg=document.getElementById('liveAutoMessage'),badge=document.getElementById('liveAutoStatus');
- async function liveRequest(path,method='GET'){
-  const headers={'Content-Type':'application/json'};
-  if(method!=='GET') headers.Authorization='Bearer '+token();
-  const r=await fetch(path,{method,headers,cache:'no-store'});
-  const d=await r.json().catch(()=>({}));
-  if(!r.ok) throw new Error(d.error||('HTTP '+r.status));
-  return d;
- }
- let liveEnabled=false;
- async function status(){
-  try{
-   const s=await liveRequest('/api/live/auto/status');
-   liveEnabled=Boolean(s.enabled);badge.textContent=liveEnabled?'REAL ATIVO':'DESLIGADO';badge.className='pill '+(liveEnabled?'ok':'no');
-   const toggle=document.getElementById('liveToggle');toggle.textContent=liveEnabled?'Desligar robô REAL':'Ligar robô REAL';toggle.className=liveEnabled?'danger':'primary';
-   const p=s.openPosition;const positionText=document.getElementById('liveRealPositionText');const sell=document.getElementById('liveSellNow');
-   if(p){
-    const pct=p.currentPct===null||p.currentPct===undefined?'aguardando cotação':Number(p.currentPct).toFixed(2)+'%';
-    positionText.textContent=p.tokenSymbol+' · Entrada US$ '+Number(p.entryPriceUsd||0).toPrecision(7)+' · Último preço US$ '+(p.lastPriceUsd?Number(p.lastPriceUsd).toPrecision(7):'—')+' · Variação '+pct+' · Pico '+Number(p.peakPct||0).toFixed(2)+'% · Proteção '+Number(p.trailFloorPct||0).toFixed(2)+'%';
-    sell.style.display='inline-block';
-   }else{positionText.textContent='Nenhuma posição REAL registrada pelo executor.';sell.style.display='none';}
-   const a=s.lastAction;document.getElementById('liveRealLastAction').textContent=a?'Última operação REAL: '+a.side+' '+(a.tokenSymbol||'')+' · '+new Date(a.at).toLocaleString()+(a.signature?' · Assinatura: '+a.signature:''):'Última operação REAL: nenhuma registrada.');
-   msg.textContent=(liveEnabled?'Robô real ativo. ':'Robô real desligado. ')+(p?'Posição REAL reconhecida. ':'Sem posição REAL registrada. ')+(s.lastError?'Último erro: '+s.lastError:'');
-  }catch(e){msg.textContent='Falha ao consultar status REAL: '+e.message;}
- }
- document.getElementById('liveToggle').onclick=async()=>{const btn=document.getElementById('liveToggle');if(!token()){msg.textContent='Informe o token privado da API configurado no servidor.';return;}btn.disabled=true;try{if(liveEnabled){if(!confirm('Desligar o robô real? A posição aberta, se houver, não será vendida automaticamente apenas por desligar.'))return;await liveRequest('/api/live/auto/disable','POST');}else{if(!confirm('Confirma operar na Solana MAINNET com dinheiro real? A ordem inicial é limitada a 0,001 SOL. O robô pode perder esse valor.'))return;msg.textContent='Validando carteira e ligando o robô real...';const scan=await fetch('/api/start',{method:'POST',headers:{'Content-Type':'application/json'},cache:'no-store'});const scanData=await scan.json().catch(()=>({}));if(!scan.ok)throw new Error(scanData.error||'Falha ao iniciar monitor de sinais (HTTP '+scan.status+').');await liveRequest('/api/live/auto/enable','POST');}await status();}catch(e){msg.textContent='Não foi possível alterar o robô: '+e.message;}finally{btn.disabled=false;}};
- document.getElementById('liveSellNow').onclick=async()=>{if(!token()){msg.textContent='Informe o token privado da API.';return;}if(!confirm('Confirma vender agora a posição REAL registrada? A venda envia uma transação na Solana e pode gerar taxas/slippage.'))return;const btn=document.getElementById('liveSellNow');btn.disabled=true;try{msg.textContent='Enviando venda REAL...';await liveRequest('/api/live/auto/sell','POST');await status();msg.textContent='Comando de venda REAL enviado; confirme a assinatura no explorador Solana e o saldo da carteira.';}catch(e){msg.textContent='Falha na venda REAL: '+e.message;}finally{btn.disabled=false;}};
- document.getElementById('liveStatusRefresh').onclick=status;
- status();setInterval(status,10000);
-})();
-</script>
+</script><script src="/live-trading.js?v=3" defer></script>
 <script src="/wallet-connect.js" defer></script></body></html>
