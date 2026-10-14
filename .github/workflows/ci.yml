@@ -5,12 +5,16 @@ on:
   pull_request:
     branches: [main]
 jobs:
-  syntax:
+  validate:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
           node-version: 22
+          cache: npm
       - run: npm install --no-package-lock
       - run: npm run check
+      - run: npm run build
+      - name: Build production Docker image
+        run: docker build -t criptonovo:ci .
