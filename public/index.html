@@ -134,7 +134,7 @@ body>main>section#liveTradingPanel{display:block!important;width:100%!important;
   <p class="coin-meta">Modo seguro: swaps reais desativados. Nunca informe sua frase-semente ou chave privada neste painel.</p>
 </section>
 <section class="panel" id="liveTradingPanel" style="margin:0 0 18px;border-color:#8b5cf6">
-  <div class="section-head"><div><h2>⚡ Operação REAL · Solana Mainnet</h2><p>Controle separado da simulação. Ordem limitada a 0,001 SOL; uma posição por vez; proteção móvel em etapas de 2%.</p></div><span class="pill no" id="liveAutoStatus">VERIFICANDO…</span></div>
+  <div class="section-head"><div><h2>⚡ Operação REAL · Solana Mainnet</h2><p>Controle separado da simulação. Ordem limitada a 0,001 SOL; uma posição por vez; proteção móvel em etapas de 2%.</p></div><span class="pill no" id="liveAutoStatus">DESLIGADO</span></div>
   <div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:end;margin-top:12px">
     <label for="liveApiToken" style="display:block;color:var(--muted);font-size:12px">Token privado da API (LIVE_TRADING_API_TOKEN)<input id="liveApiToken" type="password" autocomplete="off" placeholder="Cole aqui o token configurado no servidor" style="display:block;width:100%;margin-top:6px;padding:12px;border:1px solid var(--line);border-radius:9px;background:#0d1525;color:var(--text)"></label>
     <div class="actions"><button type="button" id="liveStatusRefresh">Atualizar status</button><button type="button" class="primary" id="liveToggle">Ligar robô REAL</button></div>
@@ -145,7 +145,7 @@ body>main>section#liveTradingPanel{display:block!important;width:100%!important;
     <p id="liveRealLastAction" style="margin:8px 0 0;color:var(--muted);font-size:12px">Última operação REAL: nenhuma registrada.</p>
     <button type="button" id="liveSellNow" class="danger" style="display:none;margin-top:10px">Vender posição REAL agora</button>
   </div>
-  <p id="liveAutoMessage" role="status" aria-live="polite" style="margin-top:12px">Consultando estado do executor real…</p>
+  <p id="liveAutoMessage" role="status" aria-live="polite" style="margin-top:12px">Estado ainda não confirmado; aguarde a consulta do executor REAL.</p>
   <p class="coin-meta">O token é enviado somente ao servidor para autenticar os comandos e não deve ser compartilhado no chat. Nunca cole aqui sua chave privada ou frase-semente da carteira.</p>
 </section>
 <div class="notice"><strong>Modo simulação:</strong> compras e vendas reais estão DESATIVADAS; o sistema não envia transações nem acessa carteiras. “Aprovado” significa apenas que passou pelos filtros básicos; não garante segurança ou lucro. O ranking de redes é indicativo, não uma promessa de ganho.</div>
@@ -341,5 +341,5 @@ document.querySelector('#refresh').onclick=refresh;loadUsdBrl().then(refresh);re
     }
   },true);
 })();
-</script><script src="/live-trading.js?v=3" defer></script>
+</script><script src="/live-trading.js?v=4" defer onerror="document.getElementById('liveAutoStatus').textContent='ERRO AO CARREGAR';document.getElementById('liveAutoMessage').textContent='O script de controle REAL não carregou. Verifique o deploy/arquivo public/live-trading.js.'"></script>
 <script src="/wallet-connect.js" defer></script></body></html>
