@@ -94,12 +94,27 @@ app.get("/api/solana/wallet-status", async (_req, res) => {
 // secret in the VPS environment only after the executor has been validated.
 function liveTradingConfig() {
   const enabled = String(process.env.LIVE_TRADING_ENABLED || "").toLowerCase() === "true";
-  const secret = String(process.env.SOLANA_TRADING_PRIVATE_KEY || "").trim();
+  const secret = String(process.env.SOLANA_TRADING_SECRET_KEY || "").trim();
+  const expectedAddress = String(process.env.SOLANA_TRADING_WALLET_ADDRESS || "").trim();
   const jupiterConfigured = Boolean(String(process.env.JUPITER_API_KEY || "").trim());
-  return { enabled, signerConfigured: Boolean(secret), jupiterConfigured,
-    ready: enabled && Boolean(secret) && jupiterConfigured,
-    mode: "PAPER",
-    note: "Real orders are not enabled: automated execution and sell engine are not yet validated." };
+  let signerAddress = null, signerValid = false, signerMatches = false, signerError = null;
+  if (secret) {
+    try {
+      const { Keypair } = require("@solana/web3.js");
+      const bytes = JSON.parse(secret);
+      if (!Array.isArray(bytes) || bytes.length !== 64 || bytes.some(n => !Number.isInteger(n) || n < 0 || n > 255))
+        throw new Error("SOLANA_TRADING_SECRET_KEY deve ser um array JSON de 64 bytes de uma carteira dedicada.");
+      const keypair = Keypair.fromSecretKey(Uint8Array.from(bytes));
+      signerAddress = keypair.publicKey.toBase58();
+      signerValid = true;
+      signerMatches = Boolean(expectedAddress && signerAddress === expectedAddress);
+    } catch (error) { signerError = error.message || "Chave de assinatura inválida."; }
+  }
+  return { enabled, signerConfigured: Boolean(secret), signerValid, signerMatches, signerAddress,
+    expectedAddressConfigured: Boolean(expectedAddress), jupiterConfigured,
+    ready: enabled && signerValid && signerMatches && jupiterConfigured,
+    mode: "PAPER", signerError, liveTradingEnabled: false,
+    note: "Diagnóstico somente leitura; o executor automático de compra/venda ainda não foi validado." };
 }
 app.get("/api/live/status", (_req, res) => {
   res.set("Cache-Control", "no-store");
