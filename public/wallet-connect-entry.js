@@ -41,6 +41,21 @@ function installManualSwapPanel() {
   panel.appendChild(box);
   const btn = box.querySelector("#jupiterBuyButton");
   const status = box.querySelector("#jupiterSwapStatus");
+  const jupiterOpenBtn = document.createElement("button");
+  jupiterOpenBtn.type = "button";
+  jupiterOpenBtn.textContent = "Abrir token na Jupiter";
+  jupiterOpenBtn.style.cssText = "margin:10px 0 0 8px;background:#1c2638;color:#eef4ff;border:1px solid #3b4b65;padding:10px 12px;border-radius:8px;cursor:pointer";
+  jupiterOpenBtn.addEventListener("click", () => {
+    const mint = box.querySelector("#jupiterTokenMint").value.trim();
+    if (!/^[1-9A-HJ-NP-Za-km-z]{32,44}$/.test(mint)) {
+      status.textContent = "Mint inválido. Confira o endereço do token antes de abrir a Jupiter.";
+      return;
+    }
+    const url = "https://jup.ag/swap/SOL-" + encodeURIComponent(mint);
+    window.open(url, "_blank", "noopener,noreferrer");
+    status.textContent = "Jupiter aberta em outra aba. Conecte a carteira diretamente na Jupiter e confira token, valor e taxas antes de assinar.";
+  });
+  btn.insertAdjacentElement("afterend", jupiterOpenBtn);
   fetch("/api/jupiter/status", { cache: "no-store" }).then(r => r.json()).then(s => {
     if (s.configured) { status.textContent = "API configurada. Compra manual; assinatura obrigatória."; btn.disabled = false; }
     else { status.textContent = "JUPITER_API_KEY não detectada no servidor. Verifique a variável no VPS."; btn.disabled = true; }
