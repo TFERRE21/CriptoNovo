@@ -75,16 +75,26 @@ async function confirmRealTransaction(signature) {
   }
   throw new Error("Venda enviada, mas sem confirmação da Solana em 30 segundos; posição mantida para reconciliação.");
 }
-async function getOwnedTokenAmountRaw(tokenAddress) {
+async function getOwnedTokenBalance(tokenAddress) {
   const signer = readSigner();
   const connection = new Connection(String(process.env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com"), "confirmed");
   const accounts = await connection.getParsedTokenAccountsByOwner(signer.publicKey, { mint: new PublicKey(tokenAddress) }, "confirmed");
   let total = 0n;
+  let decimals = null;
   for (const account of accounts.value || []) {
-    const raw = account.account?.data?.parsed?.info?.tokenAmount?.amount;
-    if (typeof raw === "string" && /^[0-9]+$/.test(raw)) total += BigInt(raw);
+    const info = account.account?.data?.parsed?.info?.tokenAmount;
+    const raw = info?.amount;
+    if (typeof raw === "string" && /^[0-9]+$/.test(raw)) {
+      total += BigInt(raw);
+      if (Number.isInteger(info.decimals)) decimals = info.decimals;
+    }
   }
-  return total.toString();
+  const raw = total.toString();
+  const quantity = decimals == null ? null : Number(raw) / (10 ** decimals);
+  return { raw, quantity, decimals };
+}
+async function getOwnedTokenAmountRaw(tokenAddress) {
+  return (await getOwnedTokenBalance(tokenAddress)).raw;
 }
 async function getSolanaTokenPrice(tokenAddress, preferredPairAddress) {
   const urls = preferredPairAddress
@@ -122,7 +132,7 @@ class LiveTradingController {
     const lastAction = this.state?.lastAction || null;
     return {
       enabled: Boolean(this.state?.enabled && enabledByEnv()), envEnabled: enabledByEnv(),
-      openPosition: p ? { mode:"REAL", tokenSymbol:p.tokenSymbol, tokenAddress:p.tokenAddress, pairAddress:p.pairAddress || null, openedAt:p.openedAt, entryPriceUsd:p.entryPriceUsd, lastPriceUsd:p.lastPriceUsd || null, currentPct:p.lastPct ?? null, peakPct:p.peakPct, trailFloorPct:p.trailFloorPct, tokenAmountRaw:p.tokenAmountRaw, signature:p.signature || null, lastCheckedAt:p.lastCheckedAt || null, priceSource:p.priceSource || null, priceLiquidityUsd:p.priceLiquidityUsd || 0, entryCostUsd:p.entryCostUsd || null, actualSolSpent:p.actualSolSpent || null, actualSolUsd:p.actualSolUsd || null, buyFeeLamports:p.buyFeeLamports || null, accountingSource:p.accountingSource || "unknown" } : null,
+      openPosition: p ? { mode:"REAL", tokenSymbol:p.tokenSymbol, tokenAddress:p.tokenAddress, pairAddress:p.pairAddress || null, openedAt:p.openedAt, entryPriceUsd:p.entryPriceUsd, lastPriceUsd:p.lastPriceUsd || null, currentPct:p.lastPct ?? null, peakPct:p.peakPct, trailFloorPct:p.trailFloorPct, tokenAmountRaw:p.tokenAmountRaw, tokenQuantity:p.actualTokenAmount || null, currentTokenQuantity:p.currentTokenQuantity || null, signature:p.signature || null, lastCheckedAt:p.lastCheckedAt || null, priceSource:p.priceSource || null, priceLiquidityUsd:p.priceLiquidityUsd || 0, entryCostUsd:p.entryCostUsd || null, actualSolSpent:p.actualSolSpent || null, actualSolUsd:p.actualSolUsd || null, buyFeeLamports:p.buyFeeLamports || null, accountingSource:p.accountingSource || "unknown" } : null,
       lastAction, lastError: this.state?.lastError || null, pollMs: POLL_MS,
       buyCapSol: BUY_LAMPORTS / 1e9, trailingStepPct: TRAIL_STEP_PCT,
       note: "Estado e histórico REAL separados da simulação; execução em mainnet pode perder capital."
@@ -184,7 +194,11 @@ class LiveTradingController {
     try {
       if (this.state.position) {
         const p = this.state.position;
-        const quote = await getSolanaTokenPrice(p.tokenAddress, p.pairAddress);
+        const [quote, ownedBalance] = await Promise.all([
+          getSolanaTokenPrice(p.tokenAddress, p.pairAddress),
+          getOwnedTokenBalance(p.tokenAddress)
+        ]);
+        if (ownedBalance.quantity != null) p.currentTokenQuantity = ownedBalance.quantity;
         const priceUsd = Number(quote?.priceUsd || 0);
         if (quote?.pairAddress) p.pairAddress = quote.pairAddress;
         p.priceSource = quote?.source || null;
