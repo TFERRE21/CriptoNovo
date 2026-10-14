@@ -10,7 +10,11 @@ app.use(express.json({ limit: "100kb" }));
 app.use(express.static(path.join(__dirname, "..", "public")));
 
 app.get("/api/health", (_req, res) => res.json({ ok: true, mode: "PAPER", time: new Date().toISOString(), running: Boolean(engine.state?.running), startupError, lastError: engine.state?.lastError || null, lastPollAt: engine.state?.lastPollAt || null, candidates: engine.state?.candidates?.length || 0 }));
-app.get("/api/state", (_req, res) => res.json({ ...engine.snapshot(), startupError }));
+app.get("/api/state", (_req, res) => {
+  if (!engine.state) return res.status(503).json({ ok: false, initializing: true, startupError, message: "O monitor ainda está inicializando; tente novamente em alguns segundos." });
+  try { return res.json({ ...engine.snapshot(), startupError }); }
+  catch (error) { console.error("Failed to create state snapshot:", error); return res.status(503).json({ ok: false, initializing: false, startupError: error.message || "Falha ao carregar estado" }); }
+});
 app.get("/api/walletconnect/config", (_req, res) => {
   // WalletConnect Project ID is a public client identifier, not a private key.
   const projectId = String(process.env.WALLETCONNECT_PROJECT_ID || "").trim();
