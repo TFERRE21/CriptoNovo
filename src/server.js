@@ -151,6 +151,53 @@ app.get("/api/live/status", (_req, res) => {
   res.json({ ok: true, ...liveTradingConfig(), liveTradingEnabled: false });
 });
 
+// Read-only live-trading preflight: validates signer, Jupiter key and SOL balance without signing/sending a transaction.
+app.get("/api/live/preflight", async (_req, res) => {
+  res.set("Cache-Control", "no-store");
+  const cfg = liveTradingConfig();
+  const checks = {
+    signerValid: cfg.signerValid,
+    signerMatches: cfg.signerMatches,
+    jupiterConfigured: cfg.jupiterConfigured,
+    apiTokenConfigured: String(process.env.LIVE_TRADING_API_TOKEN || "").length >= 32,
+    liveTradingDisabled: String(process.env.LIVE_TRADING_ENABLED || "").toLowerCase() !== "true"
+  };
+  let balanceSol = null, rpcOk = false, rpcError = null;
+  if (cfg.signerMatches) {
+    try {
+      const rpcUrl = String(process.env.SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com").trim();
+      const response = await fetch(rpcUrl, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ jsonrpc: "2.0", id: 1, method: "getBalance", params: [cfg.signerAddress, { commitment: "confirmed" }] }),
+        signal: AbortSignal.timeout(8000)
+      });
+      const payload = await response.json();
+      if (!response.ok || payload.error) throw new Error(payload.error?.message || "RPC indisponível");
+      const lamports = Number(payload.result?.value);
+      if (!Number.isSafeInteger(lamports) || lamports < 0) throw new Error("Saldo RPC inválido");
+      balanceSol = lamports / 1_000_000_000;
+      rpcOk = true;
+    } catch (error) { rpcError = error.message || "Falha no RPC"; }
+  }
+  checks.rpcOk = rpcOk;
+  checks.balanceAboveInitialOrder = balanceSol !== null && balanceSol >= 0.002;
+  const passed = Object.values(checks).every(Boolean);
+  res.json({
+    ok: true,
+    mode: "PAPER",
+    preflightPassed: passed,
+    checks,
+    walletAddress: cfg.signerMatches ? cfg.signerAddress : null,
+    balanceSol,
+    rpcError,
+    initialOrderCapSol: 0.001,
+    reserveRecommendationSol: 0.001,
+    transactionSent: false,
+    note: "Somente diagnóstico: nenhuma transação foi assinada ou enviada. O ciclo automático de posições ainda exige integração e teste."
+  });
+});
+
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 const MAX_BUY_LAMPORTS = 10000000; // 0.01 SOL; conservative initial cap
 function jupiterKey() { return String(process.env.JUPITER_API_KEY || "").trim(); }
