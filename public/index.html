@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
 <meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="criptonovo-build" content="controls-diagnostic-2026-10-12-2"><meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
-<title>CriptoNovo · Paper Trading</title>
+<title>CriptoNovo · Monitoramento e Operação</title>
 <style>
 :root{color-scheme:dark;--bg:#0b1020;--panel:#121a2c;--line:#25334b;--muted:#93a4bd;--text:#eef4ff;--green:#34d399;--red:#fb7185;--blue:#60a5fa}
 *{box-sizing:border-box}body{margin:0;background:radial-gradient(circle at top right,#182747 0,transparent 36%),var(--bg);font:14px/1.45 system-ui,Segoe UI,sans-serif;color:var(--text)}
@@ -126,6 +126,15 @@ body>main>section#tradeStatusPanel{display:block!important}
   <p id="walletConnectStatus" role="status" aria-live="polite" style="margin-top:12px">Verificando configuração do WalletConnect…</p>
   <p class="mono">Endereço público: <span id="walletConnectAddress">—</span></p>
   <p class="coin-meta">Modo seguro: swaps reais desativados. Nunca informe sua frase-semente ou chave privada neste painel.</p>
+</section>
+<section class="panel" id="liveTradingPanel" style="margin:0 0 18px;border-color:#8b5cf6">
+  <div class="section-head"><div><h2>⚡ Operação REAL · Solana Mainnet</h2><p>Controle separado da simulação. Ordem limitada a 0,001 SOL; uma posição por vez; proteção móvel em etapas de 2%.</p></div><span class="pill no" id="liveAutoStatus">VERIFICANDO…</span></div>
+  <div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:end;margin-top:12px">
+    <label for="liveApiToken" style="display:block;color:var(--muted);font-size:12px">Token privado da API (LIVE_TRADING_API_TOKEN)<input id="liveApiToken" type="password" autocomplete="off" placeholder="Cole aqui o token configurado no servidor" style="display:block;width:100%;margin-top:6px;padding:12px;border:1px solid var(--line);border-radius:9px;background:#0d1525;color:var(--text)"></label>
+    <div class="actions"><button type="button" id="liveStatusRefresh">Atualizar status</button><button type="button" class="primary" id="liveEnable">Ligar robô REAL</button><button type="button" class="danger" id="liveDisable">Desligar robô REAL</button></div>
+  </div>
+  <p id="liveAutoMessage" role="status" aria-live="polite" style="margin-top:12px">Consultando estado do executor real…</p>
+  <p class="coin-meta">O token é enviado somente ao servidor para autenticar os comandos e não deve ser compartilhado no chat. Nunca cole aqui sua chave privada ou frase-semente da carteira.</p>
 </section>
 <div class="notice"><strong>Modo simulação:</strong> compras e vendas reais estão DESATIVADAS; o sistema não envia transações nem acessa carteiras. “Aprovado” significa apenas que passou pelos filtros básicos; não garante segurança ou lucro. O ranking de redes é indicativo, não uma promessa de ganho.</div>
 <div id="engineDiagnostic" class="notice" style="display:none;border-color:#7f3044;color:#fecdd3"></div>
