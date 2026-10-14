@@ -74,6 +74,20 @@ class LiveTradingController {
     this.timer = null; await writeState(this.state);
     return this.status();
   }
+  async sellNow() {
+    if (!this.state?.position) throw new Error("Não há posição REAL registrada para vender.");
+    if (this.busy) throw new Error("Há uma operação REAL em andamento; tente novamente em alguns segundos.");
+    this.busy = true;
+    try {
+      const p = this.state.position;
+      const { result } = await this.swap(p.tokenAddress, SOL_MINT, p.tokenAmountRaw);
+      this.state.lastAction = { side:"SELL_MANUAL", tokenSymbol:p.tokenSymbol, at:new Date().toISOString(), signature:result.signature || result.txid || null };
+      this.state.position = null; this.state.lastError = null;
+      await writeState(this.state);
+      return this.status();
+    } finally { this.busy = false; }
+  }
+
   async fail(error) { this.state.lastError = String(error?.message || error).slice(0, 500); await writeState(this.state).catch(() => {}); }
   async swap(inputMint, outputMint, amount) {
     const signer = readSigner();
