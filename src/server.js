@@ -2,9 +2,11 @@ require("dotenv").config();
 const express = require("express");
 const path = require("node:path");
 const { PaperEngine } = require("./engine");
+const { LiveTradingController } = require("./live-trading-controller");
 
 const app = express();
 const engine = new PaperEngine();
+const liveController = new LiveTradingController(engine);
 let startupError = null;
 app.use(express.json({ limit: "100kb" }));
 app.use(express.static(path.join(__dirname, "..", "public")));
@@ -354,6 +356,22 @@ app.post("/api/live/swap", async (req, res) => {
   }
 });
 
+// Authenticated controls for the real Solana auto-trader. The VPS env flag is an independent kill switch.
+app.get("/api/live/auto/status", (_req, res) => res.set("Cache-Control", "no-store").json({ ok: true, ...liveController.status() }));
+app.post("/api/live/auto/enable", async (req, res) => {
+  try {
+    if (!liveApiAuthorized(req)) return res.status(401).json({ ok:false, error:"Acesso não autorizado." });
+    const status = await liveController.enable();
+    return res.json({ ok:true, ...status });
+  } catch (error) { return res.status(423).json({ ok:false, error:error.message || "Não foi possível ligar o robô real." }); }
+});
+app.post("/api/live/auto/disable", async (req, res) => {
+  try {
+    if (!liveApiAuthorized(req)) return res.status(401).json({ ok:false, error:"Acesso não autorizado." });
+    return res.json({ ok:true, ...await liveController.disable() });
+  } catch (error) { return res.status(500).json({ ok:false, error:error.message || "Não foi possível desligar o robô real." }); }
+});
+
 app.put("/api/settings", async (req, res) => {
   try { const settings = await engine.updateSettings(req.body); res.json({ ok: true, settings }); }
   catch (error) { res.status(400).json({ ok: false, error: error.message || "Configurações inválidas." }); }
@@ -382,10 +400,10 @@ const port = Number(process.env.PORT || 3000);
 // Bind HTTP first so the hosting lifecycle sees a healthy process immediately.
 const server = app.listen(port, "0.0.0.0", () => {
   console.log(`CriptoNovo paper dashboard listening on :${port}`);
-  engine.init().then(() => {
+  Promise.all([engine.init(), liveController.init()]).then(() => {
     startupError = null;
     console.log("SQLite persistent history initialized (with JSON compatibility mirror)");
-    console.log("Continuous paper monitor initialized; live trading remains disabled.");
+    console.log("Paper monitor initialized; live controller initialized DISABLED until explicitly enabled.");
   }).catch(err => {
     startupError = err?.message || "Falha desconhecida ao inicializar o monitor";
     console.error("Failed to initialize monitor:", err);
