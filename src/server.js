@@ -109,7 +109,7 @@ app.post("/api/jupiter/order", async (req, res) => {
     const response = await fetch(url, { headers: { "x-api-key": jupiterKey(), "accept": "application/json" }, signal: AbortSignal.timeout(15000) });
     const payload = await response.json();
     if (!response.ok) return res.status(502).json({ ok: false, error: payload.error || payload.message || "Jupiter não conseguiu criar a cotação." });
-    if (!payload.transaction || !payload.requestId) return res.status(502).json({ ok: false, error: "Jupiter não retornou uma transação assinável.", diagnostic: { httpStatus: response.status, responseFields: Object.keys(payload || {}), apiMessage: String(payload.error || payload.message || payload.code || "A resposta não contém transaction/requestId").slice(0, 240) } });
+    if (!payload.transaction || !payload.requestId) return res.status(502).json({ ok: false, error: "Jupiter não conseguiu montar uma transação para esse token/valor.", diagnostic: { httpStatus: response.status, router: payload.router || null, errorCode: payload.errorCode ?? null, apiMessage: String(payload.errorMessage || payload.error || payload.message || "A resposta não contém transaction/requestId").slice(0, 240), responseFields: Object.keys(payload || {}) } });
     return res.json({ ok: true, order: payload });
   } catch (error) {
     return res.status(502).json({ ok: false, error: error.message || "Falha ao solicitar cotação à Jupiter." });
