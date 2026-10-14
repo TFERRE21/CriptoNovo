@@ -60,7 +60,7 @@ function installManualSwapPanel() {
         body: JSON.stringify({ inputMint: "So11111111111111111111111111111111111111112", outputMint: mint, amount: lamports, taker: adapter.publicKey.toBase58() })
       });
       const orderBody = await orderResponse.json();
-      if (!orderResponse.ok || !orderBody.ok) throw new Error(orderBody.error || "Não foi possível obter a cotação.");
+      if (!orderResponse.ok || !orderBody.ok) { const d = orderBody.diagnostic || {}; const detail = [d.router ? "roteador: " + d.router : "", d.errorCode != null ? "código: " + d.errorCode : "", d.apiMessage || ""].filter(Boolean).join(" · "); throw new Error((orderBody.error || "Não foi possível obter a cotação.") + (detail ? " Detalhes: " + detail : "")); }
       const order = orderBody.order;
       const out = String(order.outAmount || "não informado");
       const impact = order.priceImpactPct == null ? "não informado" : String(order.priceImpactPct) + "%";
