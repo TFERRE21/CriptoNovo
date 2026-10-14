@@ -196,9 +196,9 @@ class LiveTradingController {
         const p = this.state.position;
         const [quote, ownedBalance] = await Promise.all([
           getSolanaTokenPrice(p.tokenAddress, p.pairAddress),
-          getOwnedTokenBalance(p.tokenAddress)
+          getOwnedTokenBalance(p.tokenAddress).catch(() => null)
         ]);
-        if (ownedBalance.quantity != null) p.currentTokenQuantity = ownedBalance.quantity;
+        if (ownedBalance && ownedBalance.quantity != null) p.currentTokenQuantity = ownedBalance.quantity;
         const priceUsd = Number(quote?.priceUsd || 0);
         if (quote?.pairAddress) p.pairAddress = quote.pairAddress;
         p.priceSource = quote?.source || null;
