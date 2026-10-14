@@ -122,7 +122,7 @@ class LiveTradingController {
     const lastAction = this.state?.lastAction || null;
     return {
       enabled: Boolean(this.state?.enabled && enabledByEnv()), envEnabled: enabledByEnv(),
-      openPosition: p ? { mode:"REAL", tokenSymbol:p.tokenSymbol, tokenAddress:p.tokenAddress, pairAddress:p.pairAddress || null, openedAt:p.openedAt, entryPriceUsd:p.entryPriceUsd, lastPriceUsd:p.lastPriceUsd || null, currentPct:p.lastPct ?? null, peakPct:p.peakPct, trailFloorPct:p.trailFloorPct, tokenAmountRaw:p.tokenAmountRaw, signature:p.signature || null, lastCheckedAt:p.lastCheckedAt || null, priceSource:p.priceSource || null, priceLiquidityUsd:p.priceLiquidityUsd || 0 } : null,
+      openPosition: p ? { mode:"REAL", tokenSymbol:p.tokenSymbol, tokenAddress:p.tokenAddress, pairAddress:p.pairAddress || null, openedAt:p.openedAt, entryPriceUsd:p.entryPriceUsd, lastPriceUsd:p.lastPriceUsd || null, currentPct:p.lastPct ?? null, peakPct:p.peakPct, trailFloorPct:p.trailFloorPct, tokenAmountRaw:p.tokenAmountRaw, signature:p.signature || null, lastCheckedAt:p.lastCheckedAt || null, priceSource:p.priceSource || null, priceLiquidityUsd:p.priceLiquidityUsd || 0, entryCostUsd:p.entryCostUsd || null, actualSolSpent:p.actualSolSpent || null, actualSolUsd:p.actualSolUsd || null, buyFeeLamports:p.buyFeeLamports || null, accountingSource:p.accountingSource || "unknown" } : null,
       lastAction, lastError: this.state?.lastError || null, pollMs: POLL_MS,
       buyCapSol: BUY_LAMPORTS / 1e9, trailingStepPct: TRAIL_STEP_PCT,
       note: "Estado e histórico REAL separados da simulação; execução em mainnet pode perder capital."
