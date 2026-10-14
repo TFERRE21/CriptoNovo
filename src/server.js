@@ -89,6 +89,23 @@ app.get("/api/solana/wallet-status", async (_req, res) => {
   }
 });
 
+// Live trading readiness: VPS-only signer, disabled unless explicitly enabled.
+// Never place seed phrases or private keys in source control. Configure a dedicated wallet
+// secret in the VPS environment only after the executor has been validated.
+function liveTradingConfig() {
+  const enabled = String(process.env.LIVE_TRADING_ENABLED || "").toLowerCase() === "true";
+  const secret = String(process.env.SOLANA_TRADING_PRIVATE_KEY || "").trim();
+  const jupiterConfigured = Boolean(String(process.env.JUPITER_API_KEY || "").trim());
+  return { enabled, signerConfigured: Boolean(secret), jupiterConfigured,
+    ready: enabled && Boolean(secret) && jupiterConfigured,
+    mode: "PAPER",
+    note: "Real orders are not enabled: automated execution and sell engine are not yet validated." };
+}
+app.get("/api/live/status", (_req, res) => {
+  res.set("Cache-Control", "no-store");
+  res.json({ ok: true, ...liveTradingConfig(), liveTradingEnabled: false });
+});
+
 const SOL_MINT = "So11111111111111111111111111111111111111112";
 const MAX_BUY_LAMPORTS = 10000000; // 0.01 SOL; conservative initial cap
 function jupiterKey() { return String(process.env.JUPITER_API_KEY || "").trim(); }
