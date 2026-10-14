@@ -92,6 +92,39 @@ app.get("/api/solana/wallet-status", async (_req, res) => {
 // Live trading readiness: VPS-only signer, disabled unless explicitly enabled.
 // Never place seed phrases or private keys in source control. Configure a dedicated wallet
 // secret in the VPS environment only after the executor has been validated.
+function decodeBase58Secret(value) {
+  const alphabet = "123456789ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz";
+  let number = 0n;
+  for (const char of value) {
+    const digit = alphabet.indexOf(char);
+    if (digit < 0) throw new Error("Chave privada Base58 contém caractere inválido.");
+    number = number * 58n + BigInt(digit);
+  }
+  const bytes = [];
+  while (number > 0n) {
+    bytes.push(Number(number & 255n));
+    number >>= 8n;
+  }
+  bytes.reverse();
+  let leadingZeros = 0;
+  while (leadingZeros < value.length && value[leadingZeros] === "1") leadingZeros++;
+  return Uint8Array.from([...Array(leadingZeros).fill(0), ...bytes]);
+}
+function parseSolanaSecret(value) {
+  const secret = String(value || "").trim();
+  if (!secret) throw new Error("SOLANA_TRADING_SECRET_KEY não configurada.");
+  let bytes;
+  if (secret.startsWith("[")) {
+    try { bytes = JSON.parse(secret); }
+    catch { throw new Error("A chave em array precisa ser JSON válido."); }
+    if (!Array.isArray(bytes) || bytes.length !== 64 || bytes.some(n => !Number.isInteger(n) || n < 0 || n > 255))
+      throw new Error("O array JSON da chave precisa conter exatamente 64 bytes.");
+  } else {
+    bytes = Array.from(decodeBase58Secret(secret));
+    if (bytes.length !== 64) throw new Error("A chave Base58 decodificada não contém 64 bytes; confira se copiou a chave privada Solana completa, não a frase de recuperação.");
+  }
+  return Uint8Array.from(bytes);
+}
 function liveTradingConfig() {
   const enabled = String(process.env.LIVE_TRADING_ENABLED || "").toLowerCase() === "true";
   const secret = String(process.env.SOLANA_TRADING_SECRET_KEY || "").trim();
@@ -101,10 +134,7 @@ function liveTradingConfig() {
   if (secret) {
     try {
       const { Keypair } = require("@solana/web3.js");
-      const bytes = JSON.parse(secret);
-      if (!Array.isArray(bytes) || bytes.length !== 64 || bytes.some(n => !Number.isInteger(n) || n < 0 || n > 255))
-        throw new Error("SOLANA_TRADING_SECRET_KEY deve ser um array JSON de 64 bytes de uma carteira dedicada.");
-      const keypair = Keypair.fromSecretKey(Uint8Array.from(bytes));
+      const keypair = Keypair.fromSecretKey(parseSolanaSecret(secret));
       signerAddress = keypair.publicKey.toBase58();
       signerValid = true;
       signerMatches = Boolean(expectedAddress && signerAddress === expectedAddress);
@@ -202,8 +232,7 @@ app.post("/api/live/swap", async (req, res) => {
     if (isBuy && BigInt(rawAmount) > BigInt(LIVE_SWAP_MAX_BUY_LAMPORTS))
       return res.status(400).json({ ok: false, error: "Limite inicial por compra: 0,001 SOL." });
     const { Keypair, VersionedTransaction } = require("@solana/web3.js");
-    const bytes = JSON.parse(String(process.env.SOLANA_TRADING_SECRET_KEY || ""));
-    const signer = Keypair.fromSecretKey(Uint8Array.from(bytes));
+    const signer = Keypair.fromSecretKey(parseSolanaSecret(process.env.SOLANA_TRADING_SECRET_KEY));
     if (signer.publicKey.toBase58() !== String(process.env.SOLANA_TRADING_WALLET_ADDRESS || ""))
       return res.status(423).json({ ok: false, error: "O assinante não corresponde ao endereço Solana configurado." });
     const orderUrl = new URL("https://api.jup.ag/swap/v2/order");
