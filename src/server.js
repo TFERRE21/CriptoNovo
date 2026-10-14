@@ -157,7 +157,7 @@ app.post("/api/live/dry-run", async (req, res) => {
   res.set("Cache-Control", "no-store");
   try {
     const expected = String(process.env.LIVE_TRADING_API_TOKEN || "");
-    const got = String(req.headers.authorization || "").replace(/^Bearer\\s+/i, "");
+    const got = String(req.headers.authorization || "").replace(/^Bearer\s+/i, "");
     if (expected.length < 32 || !got || got !== expected) return res.status(401).json({ ok: false, error: "Acesso não autorizado." });
     if (String(process.env.LIVE_TRADING_ENABLED || "").toLowerCase() === "true")
       return res.status(423).json({ ok: false, error: "Desative LIVE_TRADING_ENABLED antes do dry-run." });
