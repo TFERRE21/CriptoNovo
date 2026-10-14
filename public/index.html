@@ -110,7 +110,13 @@ body>main>section#tradeStatusPanel{display:block!important}
 #earlyProjectTotals .network-rank-row strong{display:block}
 #earlyProjectTotals .network-rank-row .coin-meta{white-space:normal}
 @media(max-width:520px){#earlyProjectTotals>.network-ranking-card{min-height:190px!important;padding:12px!important}}
-</style></head><body><main>
+</style><style>
+/* Corrige o CSS legado que ocultava o painel real e garante visibilidade após deploy/cache. */
+body>main>section#liveTradingPanel{display:block!important;width:100%!important;margin:0 0 18px!important;grid-column:1/-1!important;visibility:visible!important;opacity:1!important}
+#liveTradingPanel input{min-width:0}
+@media(max-width:760px){#liveTradingPanel>div[style*="grid-template-columns"]{grid-template-columns:1fr!important}#liveTradingPanel .actions{display:flex;flex-wrap:wrap}}
+</style>
+</head><body><main>
 <header><div class="brand"><div class="logo">C</div><div><h1>CriptoNovo</h1><p>Monitoramento de projetos novos</p></div></div><div class="actions"><button id="refresh">Atualizar</button><button id="start" class="primary">Iniciar simulação</button><button id="reset" class="danger">Zerar e reiniciar teste</button><button id="stop" class="danger">Parar</button></div></header>
 <section class="panel" id="walletConnectPanel" style="margin:0 0 18px">
   <div class="section-head">
@@ -131,7 +137,7 @@ body>main>section#tradeStatusPanel{display:block!important}
   <div class="section-head"><div><h2>⚡ Operação REAL · Solana Mainnet</h2><p>Controle separado da simulação. Ordem limitada a 0,001 SOL; uma posição por vez; proteção móvel em etapas de 2%.</p></div><span class="pill no" id="liveAutoStatus">VERIFICANDO…</span></div>
   <div style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:12px;align-items:end;margin-top:12px">
     <label for="liveApiToken" style="display:block;color:var(--muted);font-size:12px">Token privado da API (LIVE_TRADING_API_TOKEN)<input id="liveApiToken" type="password" autocomplete="off" placeholder="Cole aqui o token configurado no servidor" style="display:block;width:100%;margin-top:6px;padding:12px;border:1px solid var(--line);border-radius:9px;background:#0d1525;color:var(--text)"></label>
-    <div class="actions"><button type="button" id="liveStatusRefresh">Atualizar status</button><button type="button" class="primary" id="liveEnable">Ligar robô REAL</button><button type="button" class="danger" id="liveDisable">Desligar robô REAL</button></div>
+    <div class="actions"><button type="button" id="liveStatusRefresh">Atualizar status</button><button type="button" class="primary" id="liveToggle">Ligar robô REAL</button></div>
   </div>
   <p id="liveAutoMessage" role="status" aria-live="polite" style="margin-top:12px">Consultando estado do executor real…</p>
   <p class="coin-meta">O token é enviado somente ao servidor para autenticar os comandos e não deve ser compartilhado no chat. Nunca cole aqui sua chave privada ou frase-semente da carteira.</p>
@@ -341,12 +347,12 @@ document.querySelector('#refresh').onclick=refresh;loadUsdBrl().then(refresh);re
   if(!r.ok) throw new Error(d.error||('HTTP '+r.status));
   return d;
  }
+ let liveEnabled=false;
  async function status(){
-  try{const s=await liveRequest('/api/live/auto/status');badge.textContent=s.enabled?'REAL ATIVO':'DESLIGADO';msg.textContent=(s.enabled?'Robô real ativo. ':'Robô real desligado. ')+(s.openPosition?'Posição: '+s.openPosition.tokenSymbol+' · pico '+Number(s.openPosition.peakPct||0).toFixed(2)+'% · proteção '+Number(s.openPosition.trailFloorPct||0).toFixed(2)+'%. ':'Sem posição aberta. ')+(s.lastError?'Último erro: '+s.lastError:'');}
+  try{const s=await liveRequest('/api/live/auto/status');liveEnabled=Boolean(s.enabled);badge.textContent=liveEnabled?'REAL ATIVO':'DESLIGADO';badge.className='pill '+(liveEnabled?'ok':'no');const toggle=document.getElementById('liveToggle');toggle.textContent=liveEnabled?'Desligar robô REAL':'Ligar robô REAL';toggle.className=liveEnabled?'danger':'primary';msg.textContent=(liveEnabled?'Robô real ativo. ':'Robô real desligado. ')+(s.openPosition?'Posição: '+s.openPosition.tokenSymbol+' · pico '+Number(s.openPosition.peakPct||0).toFixed(2)+'% · proteção '+Number(s.openPosition.trailFloorPct||0).toFixed(2)+'%. ':'Sem posição aberta. ')+(s.lastError?'Último erro: '+s.lastError:'');}
   catch(e){msg.textContent='Falha ao consultar status: '+e.message;}
  }
- document.getElementById('liveEnable').onclick=async()=>{if(!token()){msg.textContent='Informe o token privado da API.';return;}if(!confirm('Confirma operar na Solana MAINNET com dinheiro real? A ordem inicial é limitada a 0,001 SOL. O robô pode perder esse valor.'))return;const btn=document.getElementById('liveEnable');btn.disabled=true;try{msg.textContent='Iniciando monitor de sinais...';const scan=await fetch('/api/start',{method:'POST',headers:{'Content-Type':'application/json'},cache:'no-store'});const scanData=await scan.json().catch(()=>({}));if(!scan.ok)throw new Error(scanData.error||'Falha ao iniciar monitor de sinais (HTTP '+scan.status+').');msg.textContent='Monitor iniciado. Validando carteira e ligando o robô real...';await liveRequest('/api/live/auto/enable','POST');await status();}catch(e){msg.textContent='Não foi possível ligar: '+e.message;}finally{btn.disabled=false;}};
- document.getElementById('liveDisable').onclick=async()=>{if(!token()){msg.textContent='Informe o token privado da API.';return;}try{await liveRequest('/api/live/auto/disable','POST');await status();}catch(e){msg.textContent='Não foi possível desligar: '+e.message;}};
+ document.getElementById('liveToggle').onclick=async()=>{const btn=document.getElementById('liveToggle');if(!token()){msg.textContent='Informe o token privado da API configurado no servidor.';return;}btn.disabled=true;try{if(liveEnabled){if(!confirm('Desligar o robô real? A posição aberta, se houver, não será vendida automaticamente apenas por desligar.'))return;await liveRequest('/api/live/auto/disable','POST');}else{if(!confirm('Confirma operar na Solana MAINNET com dinheiro real? A ordem inicial é limitada a 0,001 SOL. O robô pode perder esse valor.'))return;msg.textContent='Validando carteira e ligando o robô real...';const scan=await fetch('/api/start',{method:'POST',headers:{'Content-Type':'application/json'},cache:'no-store'});const scanData=await scan.json().catch(()=>({}));if(!scan.ok)throw new Error(scanData.error||'Falha ao iniciar monitor de sinais (HTTP '+scan.status+').');await liveRequest('/api/live/auto/enable','POST');}await status();}catch(e){msg.textContent='Não foi possível alterar o robô: '+e.message;}finally{btn.disabled=false;}};
  document.getElementById('liveStatusRefresh').onclick=status;
  status();setInterval(status,10000);
 })();
