@@ -1,5 +1,9 @@
 import { WalletConnectWalletAdapter } from "@solana/wallet-adapter-walletconnect";
 import { VersionedTransaction } from "@solana/web3.js";
+import { Buffer } from "buffer";
+
+// web3.js and wallet adapters expect Buffer in browser bundles.
+if (typeof globalThis.Buffer === "undefined") globalThis.Buffer = Buffer;
 
 const statusEl = document.getElementById("walletConnectStatus");
 const addressEl = document.getElementById("walletConnectAddress");
