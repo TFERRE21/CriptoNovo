@@ -203,11 +203,20 @@ class LiveTradingController {
       const signature = result.signature || result.txid || null;
       const raw = String(order.outputAmount || order.outAmount || "");
       if (!/^[1-9][0-9]*$/.test(raw)) throw new Error("Compra executada, mas quantidade cotada ausente; executor interrompido para evitar duplicidade.");
-      const actual = await getConfirmedBuyCost(signature, c.tokenAddress);
-      const actualRaw = await getOwnedTokenAmountRaw(c.tokenAddress);
-      this.state.position = { tokenAddress:c.tokenAddress, tokenSymbol:c.tokenSymbol || "?", pairAddress:c.pairAddress, entryPriceUsd:actual.entryPriceUsd, lastPriceUsd:null, tokenAmountRaw:actualRaw, actualTokenAmount:actual.tokenReceived, actualSolSpent:actual.solSpent, actualSolUsd:actual.solUsd, entryCostUsd:actual.solCostUsd, buyFeeLamports:actual.feeLamports, accountingSource:"confirmed_onchain_transaction", peakPct:0, trailFloorPct:0, openedAt:new Date().toISOString(), signature };
-      this.state.lastAction = { side:"BUY", tokenSymbol:c.tokenSymbol, at:new Date().toISOString(), signature, actualSolSpent:actual.solSpent, entryCostUsd:actual.solCostUsd, buyFeeLamports:actual.feeLamports };
-      this.state.lastError = null; await writeState(this.state);
+      // Persist the executed buy immediately so a delayed RPC/accounting lookup cannot trigger a duplicate buy.
+      this.state.position = { tokenAddress:c.tokenAddress, tokenSymbol:c.tokenSymbol || "?", pairAddress:c.pairAddress, entryPriceUsd:Number(c.priceUsd), lastPriceUsd:null, tokenAmountRaw:raw, peakPct:0, trailFloorPct:0, openedAt:new Date().toISOString(), signature, accountingSource:"pending_chain_reconciliation" };
+      this.state.lastAction = { side:"BUY", tokenSymbol:c.tokenSymbol, at:new Date().toISOString(), signature, accountingStatus:"pending_chain_reconciliation" };
+      await writeState(this.state);
+      try {
+        const actual = await getConfirmedBuyCost(signature, c.tokenAddress);
+        const actualRaw = await getOwnedTokenAmountRaw(c.tokenAddress);
+        this.state.position = { ...this.state.position, entryPriceUsd:actual.entryPriceUsd, tokenAmountRaw:actualRaw, actualTokenAmount:actual.tokenReceived, actualSolSpent:actual.solSpent, actualSolUsd:actual.solUsd, entryCostUsd:actual.solCostUsd, buyFeeLamports:actual.feeLamports, accountingSource:"confirmed_onchain_transaction" };
+        this.state.lastAction = { ...this.state.lastAction, actualSolSpent:actual.solSpent, entryCostUsd:actual.solCostUsd, buyFeeLamports:actual.feeLamports, accountingStatus:"confirmed" };
+        this.state.lastError = null;
+      } catch (accountingError) {
+        this.state.lastError = "Compra executada; custo real pendente de reconciliação. Novas compras bloqueadas: " + String(accountingError?.message || accountingError).slice(0,250);
+      }
+      await writeState(this.state);
     } finally { this.busy = false; }
   }
 }
