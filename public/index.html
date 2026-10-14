@@ -139,6 +139,12 @@ body>main>section#liveTradingPanel{display:block!important;width:100%!important;
     <label for="liveApiToken" style="display:block;color:var(--muted);font-size:12px">Token privado da API (LIVE_TRADING_API_TOKEN)<input id="liveApiToken" type="password" autocomplete="off" placeholder="Cole aqui o token configurado no servidor" style="display:block;width:100%;margin-top:6px;padding:12px;border:1px solid var(--line);border-radius:9px;background:#0d1525;color:var(--text)"></label>
     <div class="actions"><button type="button" id="liveStatusRefresh">Atualizar status</button><button type="button" class="primary" id="liveToggle">Ligar robô REAL</button></div>
   </div>
+  <div id="liveRealPosition" style="margin-top:14px;padding:12px;border:1px solid var(--line);border-radius:10px">
+    <strong>Posição REAL (Solana)</strong>
+    <p id="liveRealPositionText" style="margin:8px 0 0;color:var(--muted)">Consultando posição real…</p>
+    <p id="liveRealLastAction" style="margin:8px 0 0;color:var(--muted);font-size:12px">Última operação REAL: nenhuma registrada.</p>
+    <button type="button" id="liveSellNow" class="danger" style="display:none;margin-top:10px">Vender posição REAL agora</button>
+  </div>
   <p id="liveAutoMessage" role="status" aria-live="polite" style="margin-top:12px">Consultando estado do executor real…</p>
   <p class="coin-meta">O token é enviado somente ao servidor para autenticar os comandos e não deve ser compartilhado no chat. Nunca cole aqui sua chave privada ou frase-semente da carteira.</p>
 </section>
@@ -349,10 +355,22 @@ document.querySelector('#refresh').onclick=refresh;loadUsdBrl().then(refresh);re
  }
  let liveEnabled=false;
  async function status(){
-  try{const s=await liveRequest('/api/live/auto/status');liveEnabled=Boolean(s.enabled);badge.textContent=liveEnabled?'REAL ATIVO':'DESLIGADO';badge.className='pill '+(liveEnabled?'ok':'no');const toggle=document.getElementById('liveToggle');toggle.textContent=liveEnabled?'Desligar robô REAL':'Ligar robô REAL';toggle.className=liveEnabled?'danger':'primary';msg.textContent=(liveEnabled?'Robô real ativo. ':'Robô real desligado. ')+(s.openPosition?'Posição: '+s.openPosition.tokenSymbol+' · pico '+Number(s.openPosition.peakPct||0).toFixed(2)+'% · proteção '+Number(s.openPosition.trailFloorPct||0).toFixed(2)+'%. ':'Sem posição aberta. ')+(s.lastError?'Último erro: '+s.lastError:'');}
-  catch(e){msg.textContent='Falha ao consultar status: '+e.message;}
+  try{
+   const s=await liveRequest('/api/live/auto/status');
+   liveEnabled=Boolean(s.enabled);badge.textContent=liveEnabled?'REAL ATIVO':'DESLIGADO';badge.className='pill '+(liveEnabled?'ok':'no');
+   const toggle=document.getElementById('liveToggle');toggle.textContent=liveEnabled?'Desligar robô REAL':'Ligar robô REAL';toggle.className=liveEnabled?'danger':'primary';
+   const p=s.openPosition;const positionText=document.getElementById('liveRealPositionText');const sell=document.getElementById('liveSellNow');
+   if(p){
+    const pct=p.currentPct===null||p.currentPct===undefined?'aguardando cotação':Number(p.currentPct).toFixed(2)+'%';
+    positionText.textContent=p.tokenSymbol+' · Entrada US$ '+Number(p.entryPriceUsd||0).toPrecision(7)+' · Último preço US$ '+(p.lastPriceUsd?Number(p.lastPriceUsd).toPrecision(7):'—')+' · Variação '+pct+' · Pico '+Number(p.peakPct||0).toFixed(2)+'% · Proteção '+Number(p.trailFloorPct||0).toFixed(2)+'%';
+    sell.style.display='inline-block';
+   }else{positionText.textContent='Nenhuma posição REAL registrada pelo executor.';sell.style.display='none';}
+   const a=s.lastAction;document.getElementById('liveRealLastAction').textContent=a?'Última operação REAL: '+a.side+' '+(a.tokenSymbol||'')+' · '+new Date(a.at).toLocaleString()+(a.signature?' · Assinatura: '+a.signature:''):'Última operação REAL: nenhuma registrada.');
+   msg.textContent=(liveEnabled?'Robô real ativo. ':'Robô real desligado. ')+(p?'Posição REAL reconhecida. ':'Sem posição REAL registrada. ')+(s.lastError?'Último erro: '+s.lastError:'');
+  }catch(e){msg.textContent='Falha ao consultar status REAL: '+e.message;}
  }
  document.getElementById('liveToggle').onclick=async()=>{const btn=document.getElementById('liveToggle');if(!token()){msg.textContent='Informe o token privado da API configurado no servidor.';return;}btn.disabled=true;try{if(liveEnabled){if(!confirm('Desligar o robô real? A posição aberta, se houver, não será vendida automaticamente apenas por desligar.'))return;await liveRequest('/api/live/auto/disable','POST');}else{if(!confirm('Confirma operar na Solana MAINNET com dinheiro real? A ordem inicial é limitada a 0,001 SOL. O robô pode perder esse valor.'))return;msg.textContent='Validando carteira e ligando o robô real...';const scan=await fetch('/api/start',{method:'POST',headers:{'Content-Type':'application/json'},cache:'no-store'});const scanData=await scan.json().catch(()=>({}));if(!scan.ok)throw new Error(scanData.error||'Falha ao iniciar monitor de sinais (HTTP '+scan.status+').');await liveRequest('/api/live/auto/enable','POST');}await status();}catch(e){msg.textContent='Não foi possível alterar o robô: '+e.message;}finally{btn.disabled=false;}};
+ document.getElementById('liveSellNow').onclick=async()=>{if(!token()){msg.textContent='Informe o token privado da API.';return;}if(!confirm('Confirma vender agora a posição REAL registrada? A venda envia uma transação na Solana e pode gerar taxas/slippage.'))return;const btn=document.getElementById('liveSellNow');btn.disabled=true;try{msg.textContent='Enviando venda REAL...';await liveRequest('/api/live/auto/sell','POST');await status();msg.textContent='Comando de venda REAL enviado; confirme a assinatura no explorador Solana e o saldo da carteira.';}catch(e){msg.textContent='Falha na venda REAL: '+e.message;}finally{btn.disabled=false;}};
  document.getElementById('liveStatusRefresh').onclick=status;
  status();setInterval(status,10000);
 })();
