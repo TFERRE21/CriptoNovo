@@ -26,11 +26,11 @@ function installManualSwapPanel() {
   box.id = "jupiterManualSwap";
   box.style.cssText = "margin-top:14px;padding:14px;border:1px solid #25334b;border-radius:10px;background:#0d1525";
   box.innerHTML = '<h3 style="margin:0 0 8px">Compra manual via Jupiter · teste controlado</h3>' +
-    '<p style="margin-bottom:10px">Não liga o robô automático. Cada compra exige sua assinatura na carteira. Limite técnico inicial: 0,01 SOL por ordem; taxas da rede são adicionais.</p>' +
+    '<p style="margin-bottom:10px">Compra manual; não liga o robô automático. Teste inicial sugerido: 0,001 SOL. Preserve saldo para taxas e criação da conta do token. Confirme se o endereço conectado é o mesmo da carteira que contém SOL.</p>' +
     '<label for="jupiterTokenMint" style="display:block;margin:8px 0 4px">Mint do token Solana que deseja comprar</label>' +
     '<input id="jupiterTokenMint" autocomplete="off" spellcheck="false" placeholder="Cole o endereço mint do token" style="width:100%;box-sizing:border-box;padding:10px;border-radius:8px;border:1px solid #25334b;background:#111c2d;color:#eef4ff">' +
     '<label for="jupiterSolAmount" style="display:block;margin:8px 0 4px">Valor em SOL (máximo 0,01)</label>' +
-    '<input id="jupiterSolAmount" type="number" min="0.001" max="0.01" step="0.001" value="0.005" style="width:100%;box-sizing:border-box;padding:10px;border-radius:8px;border:1px solid #25334b;background:#111c2d;color:#eef4ff">' +
+    '<input id="jupiterSolAmount" type="number" min="0.001" max="0.01" step="0.001" value="0.001" style="width:100%;box-sizing:border-box;padding:10px;border-radius:8px;border:1px solid #25334b;background:#111c2d;color:#eef4ff">' +
     '<button id="jupiterBuyButton" type="button" class="primary" style="margin-top:10px" disabled>Solicitar cotação e comprar</button>' +
     '<p id="jupiterSwapStatus" role="status" aria-live="polite" style="margin-top:8px">Verificando API Jupiter…</p>';
   panel.appendChild(box);
@@ -60,7 +60,7 @@ function installManualSwapPanel() {
         body: JSON.stringify({ inputMint: "So11111111111111111111111111111111111111112", outputMint: mint, amount: lamports, taker: adapter.publicKey.toBase58() })
       });
       const orderBody = await orderResponse.json();
-      if (!orderResponse.ok || !orderBody.ok) { const d = orderBody.diagnostic || {}; const detail = [d.router ? "roteador: " + d.router : "", d.errorCode != null ? "código: " + d.errorCode : "", d.apiMessage || ""].filter(Boolean).join(" · "); throw new Error((orderBody.error || "Não foi possível obter a cotação.") + (detail ? " Detalhes: " + detail : "")); }
+      if (!orderResponse.ok || !orderBody.ok) { const d = orderBody.diagnostic || {}; const detail = [d.router ? "roteador: " + d.router : "", d.errorCode != null ? "código: " + d.errorCode : "", d.apiMessage || ""].filter(Boolean).join(" · "); if (/insufficient funds/i.test(d.apiMessage || "")) throw new Error("Saldo insuficiente na carteira informada à Jupiter. Confira se o endereço conectado é o mesmo que mostra seu saldo e reserve SOL para taxas e criação da conta do token. A tentativa não foi enviada para assinatura."); throw new Error((orderBody.error || "Não foi possível obter a cotação.") + (detail ? " Detalhes: " + detail : "")); }
       const order = orderBody.order;
       const out = String(order.outAmount || "não informado");
       const impact = order.priceImpactPct == null ? "não informado" : String(order.priceImpactPct) + "%";
